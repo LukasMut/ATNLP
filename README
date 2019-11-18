@@ -1,0 +1,6 @@
+Reimplementation of the paper: "Generalization without Systematicity:
+On the Compositional Skills of Sequence-to-Sequence Recurrent Networks"
+
+Link to paper: http://proceedings.mlr.press/v80/lake18a/lake18a.pdf
+
+Link to data: https://github.com/brendenlake/SCAN
