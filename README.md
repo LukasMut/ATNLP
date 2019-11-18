@@ -15,4 +15,6 @@ Deadline for finishing group presentation: December 15th
 
 Deadline for reimplementation of experiment 2): December 19th
 
+Christmas break (break from the project): 20th - 26th
+
 Final dadline for entire reimplementation of the paper: January 10th 
