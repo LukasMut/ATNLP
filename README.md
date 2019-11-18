@@ -5,7 +5,7 @@ Link to paper: http://proceedings.mlr.press/v80/lake18a/lake18a.pdf
 
 Link to data: https://github.com/brendenlake/SCAN
 
-## Deadline
+## Deadlines
 
 Deadline for reimplementation of experiment 1a) and 1b): December 9th
 
