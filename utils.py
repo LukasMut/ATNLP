@@ -1,4 +1,4 @@
-# we don't want to load all libraries into memory that are imported in this .py file 
+# we don't want to load all libraries that are imported in this .py file into memory 
 __all__ = ['load_dataset', 'sort_dict', 'w2i', 's2i']
 
 import numpy as np
