@@ -1,5 +1,5 @@
 # we don't want to load all libraries that are imported in this .py file into memory 
-__all__ = ['load_dataset', 'sort_dict', 'w2i', 's2i']
+__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 's2i', 'pairs2idx']
 
 import numpy as np
 import os
@@ -7,12 +7,12 @@ import re
 import torch
 
 from collections import defaultdict
-from keras.preprocessing.sequence import pad_sequences
+from torch.autograd import Variable
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
     Args: 
-        exp (str): experiment
+        exp (str): experiment (one of [1a, 1b, 2, 3])
         split (str): train or test dataset
     Returns:
         lang_vocab (dict): word2freq dictionary 
@@ -28,6 +28,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
     
     with open(file, 'r', encoding='utf-8') as f:
         for line in f:
+            #TODO: figure out whether "I_" at the beginning of each action has to be stripped
             cmd = line[line.index(cmd_start)+len(cmd_start):line.index(act_start)].strip().split()
             act = line[line.index(act_start)+len(act_start):].strip().split()
             for w in cmd: cmd_vocab[w] += 1
@@ -45,6 +46,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
 def sort_dict(some_dict:dict): return dict(sorted(some_dict.items(), key=lambda kv:kv[1], reverse=True))
 
 def w2i(vocab:dict):
+    #TODO: figure out whether special <PAD> is necessary
     w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
     n_special_toks = len(w2i)
     for i, w in enumerate(vocab.keys()):
@@ -52,30 +54,25 @@ def w2i(vocab:dict):
     i2w = dict(enumerate(w2i.keys()))
     return w2i, i2w
 
-def s2i(sents:list, w2i:dict, padding:bool=True, decode:bool=False):
-    """sentence2idx mapping
-    Args: 
-        sents (list): each sentence is represented through words (str)
-        w2i (dict): word2idx dictionary
-        padding (str): whether padding should be performed or not (padding value = 0)
+def create_pairs(cmds:list, acts:list): return list(zip(cmds, acts))
+
+def s2i(sent:list, w2i:dict, decode:bool=False):
+    indices = [w2i['<SOS>']] if decode else []
+    for w in sent:
+        indices.append(w2i[w])
+    indices.append(w2i['<EOS>'])
+    return indices
+
+def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
+    """command-action pair to indices mapping
+    Args:
+        cmd_act_pair (list): each action / command is represented through strings
+        w2i_cmd (dict): word2idx input language dictionary (commands)
+        w2i_act (dict): word2idx output language dictionary (actions) 
     Return:
-        sents (np.ndarray): each sentence is represented through its corresponding idx in the vocab (int)
+        command-action pair (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
     """
-    seqs = []
-    n_special_toks = 2 if decode else 1
-    for sent in sents:
-        indices = np.zeros(len(sent) + n_special_toks, dtype=int)
-        # append <SOS> token to beginning of action (!) sequences only (not to command sequences)
-        if decode: 
-            indices[0] = w2i['<SOS>']
-        for i, w in enumerate(sent):
-            indices[i + n_special_toks-1] += w2i[w]
-        # append <EOS> token to end of sequence
-        indices[len(indices)-1] = w2i['<EOS>']
-        seqs.append(indices)
-    # we have to pad sequences if we want to perform mini batch training (otherwise batch_size must be equal to 1)
-    if padding:
-        #NOTE: use iter() instead of list() if you don't want to load data into memory ("on-the-fly execution")
-        max_len = max(iter(map(lambda seq: len(seq), seqs)))
-        seqs = pad_sequences(seqs, maxlen=max_len, dtype="long", truncating="post", padding="post", value=0)
-    return seqs
+    cmd, act = cmd_act_pair
+    cmd_seq = Variable(torch.tensor(s2i(cmd, w2i_cmd), dtype=torch.long))
+    act_seq = Variable(torch.tensor(s2i(act, w2i_act, decode=True), dtype=torch.long))
+    return (cmd_seq, act_seq)
