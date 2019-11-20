@@ -4,8 +4,10 @@ __all__ = ['load_dataset', 'sort_dict', 'w2i', 's2i']
 import numpy as np
 import os
 import re
+import torch
 
 from collections import defaultdict
+from keras.preprocessing.sequence import pad_sequences
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
@@ -43,25 +45,30 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
 def sort_dict(some_dict:dict): return dict(sorted(some_dict.items(), key=lambda kv:kv[1], reverse=True))
 
 def w2i(vocab:dict):
-    w2i = {'<SOS>': 0, '<EOS>': 1, '<UNK>': 2}
+    w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
     n_special_toks = len(w2i)
     for i, w in enumerate(vocab.keys()):
         w2i[w] = i + n_special_toks
     i2w = dict(enumerate(w2i.keys()))
     return w2i, i2w
 
-def s2i(sents:list, w2i:dict):
+def s2i(sents:list, w2i:dict, padding:str=True):
     """sentence2idx mapping
     Args: 
         sents (list): each sentence is represented through words (str)
         w2i (dict): word2idx dictionary
+        padding (str): whether padding should be performed or not (padding value = 0)
     Return:
         sents (np.ndarray): each sentence is represented through its corresponding idx in the vocab (int)
     """
-    all_sents = []
+    seqs = []
     for sent in sents:
         indices = np.zeros(len(sent), dtype=int)
         for i, w in enumerate(sent):
             indices[i] += w2i[w]
-        all_sents.append(indices)
-    return np.array(all_sents)
+        seqs.append(indices)
+    # we have to pad sequences if we want to perform mini batch training (otherwise batch_size must be equal to 1)
+    if padding:
+        max_len = max(iter(map(lambda seq: len(seq), seqs)))
+        seqs = pad_sequences(seqs, maxlen=max_len, dtype="long", truncating="post", padding="post", value=0)
+    return seqs
