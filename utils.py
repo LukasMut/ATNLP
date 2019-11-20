@@ -75,6 +75,7 @@ def s2i(sents:list, w2i:dict, padding:bool=True, decode:bool=False):
         seqs.append(indices)
     # we have to pad sequences if we want to perform mini batch training (otherwise batch_size must be equal to 1)
     if padding:
+        #NOTE: use iter() instead of list() if you don't want to load data into memory ("on-the-fly execution")
         max_len = max(iter(map(lambda seq: len(seq), seqs)))
         seqs = pad_sequences(seqs, maxlen=max_len, dtype="long", truncating="post", padding="post", value=0)
     return seqs
