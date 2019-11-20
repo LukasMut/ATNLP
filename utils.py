@@ -52,7 +52,7 @@ def w2i(vocab:dict):
     i2w = dict(enumerate(w2i.keys()))
     return w2i, i2w
 
-def s2i(sents:list, w2i:dict, padding:str=True):
+def s2i(sents:list, w2i:dict, padding:bool=True, output:bool=False):
     """sentence2idx mapping
     Args: 
         sents (list): each sentence is represented through words (str)
@@ -62,10 +62,14 @@ def s2i(sents:list, w2i:dict, padding:str=True):
         sents (np.ndarray): each sentence is represented through its corresponding idx in the vocab (int)
     """
     seqs = []
+    n_special_toks = 2 if output else 1
     for sent in sents:
-        indices = np.zeros(len(sent) + 1, dtype=int)
+        indices = np.zeros(len(sent) + n_special_toks, dtype=int)
+        # append <SOS> token to beginning of action (!) sequences only (not to command sequences)
+        if output: 
+            indices[0] = w2i['<SOS>']
         for i, w in enumerate(sent):
-            indices[i] += w2i[w]
+            indices[i + n_special_toks-1] += w2i[w]
         # append <EOS> token to end of sequence
         indices[len(indices)-1] = w2i['<EOS>']
         seqs.append(indices)
