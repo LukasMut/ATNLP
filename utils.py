@@ -31,6 +31,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
             #TODO: figure out whether "I_" at the beginning of each action has to be stripped
             cmd = line[line.index(cmd_start)+len(cmd_start):line.index(act_start)].strip().split()
             act = line[line.index(act_start)+len(act_start):].strip().split()
+            #TODO: figure out whether vocab is shared between source and target language (or whether there are separate vocabs)
             for w in cmd: cmd_vocab[w] += 1
             for w in act: act_vocab[w] += 1
             cmds.append(cmd)
