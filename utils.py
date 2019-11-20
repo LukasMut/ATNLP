@@ -63,9 +63,11 @@ def s2i(sents:list, w2i:dict, padding:str=True):
     """
     seqs = []
     for sent in sents:
-        indices = np.zeros(len(sent), dtype=int)
+        indices = np.zeros(len(sent) + 1, dtype=int)
         for i, w in enumerate(sent):
             indices[i] += w2i[w]
+        # append <EOS> token to end of sequence
+        indices[len(indices)-1] = w2i['<EOS>']
         seqs.append(indices)
     # we have to pad sequences if we want to perform mini batch training (otherwise batch_size must be equal to 1)
     if padding:
