@@ -3,3 +3,5 @@
 data/exp_1a/test/tasks_test_simple.txt
 data/exp_1a/train/tasks_train_simple.txt
 __pycache__/utils.cpython-37.pyc
+data/exp_2/test/tasks_test_length.txt
+data/exp_2/train/tasks_train_length.txt
