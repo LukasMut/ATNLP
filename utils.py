@@ -8,11 +8,13 @@ import torch
 
 from collections import defaultdict
 from torch.autograd import Variable
+#TODO: import TensorDataset to load source-target language pairs more efficiently
+from torch.utils.data import TensorDataset
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
     Args: 
-        exp (str): experiment (one of [1a, 1b, 2, 3])
+        exp (str): experiment (one of [exp_1a, exp_1b, exp_2, exp_3])
         split (str): train or test dataset
     Returns:
         lang_vocab (dict): word2freq dictionary 
@@ -20,6 +22,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
         i2w (dict): idx2word mapping
         lang (list): list of all sentences in either input (commands) or output (actions) language
     """
+    assert isinstance(exp, str), 'experiment must be one of [exp_1a, exp_1b, exp_2, exp_3]'
     file = subdir+exp+split+'/'+os.listdir(subdir+exp+split).pop()
     cmd_start = 'IN:'
     act_start = 'OUT:'
@@ -31,7 +34,6 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
             #TODO: figure out whether "I_" at the beginning of each action has to be stripped (seems odd)
             cmd = line[line.index(cmd_start)+len(cmd_start):line.index(act_start)].strip().split()
             act = line[line.index(act_start)+len(act_start):].strip().split()
-            #TODO: figure out whether vocab is shared between source and target language (or whether vocabs are separate)
             for w in cmd: cmd_vocab[w] += 1
             for w in act: act_vocab[w] += 1
             cmds.append(cmd)
@@ -47,8 +49,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
 def sort_dict(some_dict:dict): return dict(sorted(some_dict.items(), key=lambda kv:kv[1], reverse=True))
 
 def w2i(vocab:dict):
-    #TODO: figure out whether special <PAD> is necessary
-    w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
+    w2i = {'<SOS>': 0, '<EOS>': 1, '<UNK>': 2}
     n_special_toks = len(w2i)
     for i, w in enumerate(vocab.keys()):
         w2i[w] = i + n_special_toks
@@ -77,3 +78,6 @@ def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
     cmd_seq = Variable(torch.tensor(s2i(cmd, w2i_cmd), dtype=torch.long))
     act_seq = Variable(torch.tensor(s2i(act, w2i_act, decode=True), dtype=torch.long))
     return (cmd_seq, act_seq)
+
+
+#TODO: we might want to implement a shuffled tensor dataloader that does not exploit random.choice
