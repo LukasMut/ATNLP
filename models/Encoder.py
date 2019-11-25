@@ -66,7 +66,7 @@ class EncoderLSTM(nn.Module):
         out, hidden = self.lstm(embedded, hidden)
         return out, hidden
     
-     def init_hidden(self, batch_size:int=1):
+    def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
         cell_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
@@ -95,7 +95,7 @@ class EncoderGRU(nn.Module):
         out, hidden = self.gru(embedded, hidden)
         return out, hidden
     
-     def init_hidden(self, batch_size:int=1):
+    def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
         cell_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
