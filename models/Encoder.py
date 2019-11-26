@@ -28,7 +28,7 @@ class EncoderRNN(nn.Module):
         self.bidir = bidir
         
         self.embedding = nn.Embedding(in_size, emb_size)
-        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=False, droput=dropout, bidirectional=bidir)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
     def forward(self, word_inputs, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
@@ -56,7 +56,7 @@ class EncoderLSTM(nn.Module):
         self.bidir = bidir
         
         self.embedding = nn.Embedding(in_size, emb_size)
-        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, droput=dropout, bidirectional=bidir)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
     def forward(self, word_inputs, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
@@ -85,7 +85,7 @@ class EncoderGRU(nn.Module):
         self.bidir = bidir
         
         self.embedding = nn.Embedding(in_size, emb_size)
-        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=False, droput=dropout, bidirectional=bidir)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
     def forward(self, word_inputs, hidden):
         # NOTE: we run this all at once (over the whole input sequence)

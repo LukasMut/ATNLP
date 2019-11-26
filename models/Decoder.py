@@ -19,15 +19,16 @@ else:
 
 class DecoderRNN(nn.Module):
     
-    def __init__(self, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
         super(DecoderRNN, self).__init__()
+        self.emb_size = emb_size        
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
         
         self.embedding = nn.Embedding(out_size, emb_size)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout)
+        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden):
@@ -39,21 +40,23 @@ class DecoderRNN(nn.Module):
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
         return nn.init.xavier_uniform_(hidden_state)
     
     
 class DecoderLSTM(nn.Module):
     
-    def __init__(self, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
         super(DecoderLSTM, self).__init__()
+        self.emb_size = emb_size        
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
+        self.emb_size = emb_size
         
         self.embedding = nn.Embedding(out_size, emb_size)
-        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden):
@@ -61,24 +64,27 @@ class DecoderLSTM(nn.Module):
         embedded = F.relu(embedded) #TODO: figure out, whether applying a ReLu on embedding inputs is useful
         out, hidden = self.lstm(embedded, hidden)
         logits = self.linear(out.squeeze(0))
-        log_probas = F.log_softmax(logits)
+        log_probas = F.log_softmax(logits, dim=1)
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
-        return nn.init.xavier_uniform_(hidden_state)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
+        return hidden
     
 class DecoderGRU(nn.Module):
     
-    def __init__(self, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
         super(DecoderGRU, self).__init__()
+        self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
         
         self.embedding = nn.Embedding(out_size, emb_size)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden):
@@ -90,14 +96,17 @@ class DecoderGRU(nn.Module):
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
-        return nn.init.xavier_uniform_(hidden_state)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
+        return hidden
     
     
 class AttnDecoderRNN(nn.Module):
     
-    def __init__(self, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderRNN, self).__init__()
+        self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
@@ -107,7 +116,7 @@ class AttnDecoderRNN(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout_p)
+        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -120,13 +129,14 @@ class AttnDecoderRNN(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
         return nn.init.xavier_uniform_(hidden_state)
         
 class AttnDecoderLSTM(nn.Module):
     
-    def __init__(self, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderLSTM, self).__init__()
+        self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
@@ -136,7 +146,7 @@ class AttnDecoderLSTM(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout_p)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -149,14 +159,17 @@ class AttnDecoderLSTM(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
-        return nn.init.xavier_uniform_(hidden_state)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
+        return hidden
     
     
 class AttnDecoderGRU(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderGRU, self).__init__()
+        self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
@@ -166,7 +179,7 @@ class AttnDecoderGRU(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, droput=dropout_p)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -179,5 +192,7 @@ class AttnDecoderGRU(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.hidden_size, device=device)
-        return nn.init.xavier_uniform_(hidden_state)
+        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
+        return hidden
