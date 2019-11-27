@@ -10,3 +10,4 @@ models/__pycache__/Decoder.cpython-37.pyc
 models/__pycache__/Encoder.cpython-37.pyc
 .ipynb_checkpoints/Untitled-checkpoint.ipynb
 .ipynb_checkpoints/model_training-checkpoint.ipynb
+*.PNG
