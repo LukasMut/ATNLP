@@ -11,7 +11,7 @@ Link to data: https://github.com/brendenlake/SCAN
 
 ## Deadlines
 
-Deadline for reimplementation of experiment 1a) and 1b): December 9th
+Deadline for reimplementation of experiment 1a) and 1b): December 4th
 
 Deadline for finishing group presentation: December 15th
 
