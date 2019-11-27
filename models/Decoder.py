@@ -40,7 +40,7 @@ class DecoderRNN(nn.Module):
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         return nn.init.xavier_uniform_(hidden_state)
     
     
@@ -68,8 +68,8 @@ class DecoderLSTM(nn.Module):
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
-        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
+        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
         return hidden
     
@@ -96,8 +96,8 @@ class DecoderGRU(nn.Module):
         return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
-        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
+        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
         return hidden
     
@@ -129,7 +129,7 @@ class AttnDecoderRNN(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         return nn.init.xavier_uniform_(hidden_state)
         
 class AttnDecoderLSTM(nn.Module):
@@ -159,8 +159,8 @@ class AttnDecoderLSTM(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
-        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
+        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
         return hidden
     
@@ -192,7 +192,7 @@ class AttnDecoderGRU(nn.Module):
         return log_probas, hidden, attn_weights
     
     def init_hidden(self, batch_size:int=1):
-        hidden_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
-        cell_state = torch.zeros(batch_size, 1, self.emb_size, device=device)
+        hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
+        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
         hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
         return hidden

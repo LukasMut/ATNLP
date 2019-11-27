@@ -49,7 +49,8 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
 def sort_dict(some_dict:dict): return dict(sorted(some_dict.items(), key=lambda kv:kv[1], reverse=True))
 
 def w2i(vocab:dict):
-    w2i = {'<SOS>': 0, '<EOS>': 1, '<UNK>': 2}
+    # NOTE: with batch_size = 1 we don't make use of the special <PAD> token (only necessary for mini-batch training)
+    w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
     n_special_toks = len(w2i)
     for i, w in enumerate(vocab.keys()):
         w2i[w] = i + n_special_toks
@@ -80,4 +81,4 @@ def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
     return (cmd_seq, act_seq)
 
 
-#TODO: we might want to implement a shuffled tensor dataloader that does not exploit random.choice
+#TODO: we might want to implement a shuffled tensor dataloader that does not exploit random.choice (crucial for mini-batch training)
