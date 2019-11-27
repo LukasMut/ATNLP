@@ -31,7 +31,6 @@ def load_dataset(exp:str, split:str, subdir:str='./data'):
     
     with open(file, 'r', encoding='utf-8') as f:
         for line in f:
-            #TODO: figure out whether "I_" at the beginning of each action has to be stripped (seems odd)
             cmd = line[line.index(cmd_start)+len(cmd_start):line.index(act_start)].strip().split()
             act = line[line.index(act_start)+len(act_start):].strip().split()
             for w in cmd: cmd_vocab[w] += 1
