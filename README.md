@@ -15,7 +15,7 @@ Deadline for reimplementation of experiment 1a) and 1b): December 9th
 
 Deadline for finishing group presentation: December 15th
 
-Deadline for reimplementation of experiment 2): December 19th
+Deadline for reimplementation of experiment 2): December 18th
 
 Christmas break (break from the project): 19th - 26th
 
