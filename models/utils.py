@@ -1,4 +1,4 @@
-__all__ = ['train', 'test', ' sample_distinct_pairs']
+__all__ = ['train', 'test', 'sample_distinct_pairs']
 
 import numpy as np
 import torch.nn as nn
