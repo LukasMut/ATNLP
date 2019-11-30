@@ -1,4 +1,4 @@
-__all__ = ['train', 'test']
+__all__ = ['train', 'test', ' sample_distinct_pairs']
 
 import numpy as np
 import torch.nn as nn
@@ -18,6 +18,8 @@ from utils import pairs2idx, s2i
 # set fixed random seed to reproduce results
 np.random.seed(42)
 random.seed(42)
+
+device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 ### Training ###
 
@@ -230,3 +232,13 @@ def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, de
     test_acc /= n_lang_pairs
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     return test_acc
+
+
+## Sampling function for experiment 1b ##
+
+def sample_distinct_pairs(cmd_act_pairs:list, ratio:float):
+    # randomly shuffle the data set prior to picking distinct examples
+    np.random.shuffle(cmd_act_pairs)
+    n_lang_pairs = len(cmd_act_pairs)
+    n_distinct_samples = int(n_lang_pairs * ratio)        
+    return cmd_act_pairs[:n_distinct_samples]
