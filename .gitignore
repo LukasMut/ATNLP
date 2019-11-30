@@ -11,3 +11,8 @@ models/__pycache__/Encoder.cpython-37.pyc
 .ipynb_checkpoints/Untitled-checkpoint.ipynb
 .ipynb_checkpoints/model_training-checkpoint.ipynb
 *.PNG
+.ipynb_checkpoints/experiment_1a-checkpoint.ipynb
+.ipynb_checkpoints/experiment_1b-checkpoint.ipynb
+models/__pycache__/utils.cpython-37.pyc
+data/exp_1/test/tasks_test_simple.txt
+data/exp_1/train/tasks_train_simple.txt
