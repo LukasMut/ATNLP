@@ -17,6 +17,8 @@ class GeneralAttention(nn.Module):
         self.attn_out = nn.Linear(self.hidden_size * 2, self.hidden_size)
                  
     def forward(self, embedded, hidden, encoder_hiddens):
+        
+        
         # squeeze removes dimension at specified position (0) --> 2D matrix (required for linear layer)
         attn_weights = F.softmax(self.attn(torch.cat((embedded.squeeze(0), hidden.squeeze(0)), 1)), dim=1) 
         # unsqueeze inserts dimension at specified position (0) --> 3D tensor (required for batch-matmul)
