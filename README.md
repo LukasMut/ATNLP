@@ -11,12 +11,16 @@ Link to data: https://github.com/brendenlake/SCAN
 
 ## Deadlines
 
-Deadline for reimplementation of experiment 1a) and 1b): December 4th
+Deadline for reimplementation of experiment 1a) and 1b): December 2nd
 
 Deadline for finishing group presentation: December 15th
 
-Deadline for reimplementation of experiment 2): December 18th
+Deadline for reimplementation of experiment 2): December 15th
 
 Christmas break (break from the project): 19th - 26th
 
-Final deadline for entire reimplementation of the paper: January 10th 
+Final deadline for entire reimplementation of the paper: January 7th
+
+Implementing extra features (e.g Diff attentions) : January 14th
+
+Final hard deadline to submit report : January 20th
