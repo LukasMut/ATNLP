@@ -40,7 +40,7 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
     # np.random.shuffle(lang_pairs)
     
     # randomly sample 100k training pairs from the original train data set (with replacement)
-    training_pairs = [pairs2idx(random.choice(lang_pairs), w2i_source, w2i_target) for _ in range(n_iters)]
+    #training_pairs = [pairs2idx(random.choice(lang_pairs), w2i_source, w2i_target) for _ in range(n_iters)]
     
     max_target_length = max(iter(map(lambda lang_pair: len(lang_pair[1]), training_pairs)))
     n_lang_pairs = len(training_pairs)
@@ -59,7 +59,7 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
         loss_per_epoch = 0
         acc_per_epoch = 0
         
-        for idx, train_pair in enumerate(training_pairs):
+        for idx, source, target in enumerate(train_dl):
             
             loss = 0
             
@@ -233,6 +233,14 @@ def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, de
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     return test_acc
 
+# masked negative log-likelihood loss (necessary for mini-batch training)
+
+def maskNLLLoss(pred, target, mask):
+    nTotal = mask.sum()
+    crossEntropy = -torch.log(torch.gather(pred, 1, target.view(-1, 1)).squeeze(1))
+    loss = crossEntropy.masked_select(mask).mean()
+    loss = loss.to(device)
+    return loss, nTotal.item()
 
 ## Sampling function for experiment 1b ##
 

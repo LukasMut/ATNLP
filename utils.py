@@ -1,5 +1,5 @@
 # we don't want to load all libraries that are imported in this .py file into memory 
-__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 's2i', 'pairs2idx']
+__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 'max_length', 's2i', 'pairs2idx', 'create_batches']
 
 import numpy as np
 import os
@@ -7,9 +7,11 @@ import re
 import torch
 
 from collections import defaultdict
+from keras.preprocessing.sequence import pad_sequences
 from torch.autograd import Variable
-#TODO: import TensorDataset to load source-target language pairs more efficiently
-from torch.utils.data import TensorDataset
+from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
+
+device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
@@ -63,21 +65,56 @@ def s2i(sent:list, w2i:dict, decode:bool=False):
     for w in sent:
         indices.append(w2i[w])
     indices.append(w2i['<EOS>'])
-    return indices
+    return np.array(indices)
 
-def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
+def max_length(seqs:list): return max((len(seq) for seq in seqs))
+
+def padding(seqs:list, max_length:int): return pad_sequences(seqs, maxlen=max_length, dtype='int64', padding='post', value=0)
+
+def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True):
     """command-action pair to indices mapping
     Args:
-        cmd_act_pair (list): each action / command is represented through strings
+        commands (list): natural language commands (each command is represented through strings)
+        actions (list): target actions (each action is represented through strings)
         w2i_cmd (dict): word2idx input language dictionary (commands)
-        w2i_act (dict): word2idx output language dictionary (actions) 
+        w2i_act (dict): word2idx output language dictionary (actions)
+        padding (bool): specifies whether zero-padding should be performed
     Return:
-        command-action pair (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
+        padded command-action pairs (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
     """
-    cmd, act = cmd_act_pair
-    cmd_seq = Variable(torch.tensor(s2i(cmd, w2i_cmd), dtype=torch.long))
-    act_seq = Variable(torch.tensor(s2i(act, w2i_act, decode=True), dtype=torch.long))
-    return (cmd_seq, act_seq)
+    if padding:
+        maxlen_cmds, maxlen_acts = max_length(cmds), max_length(acts)
+        cmd_sequences = padding([s2i(cmd, w2i_cmd) for cmd in cmds], maxlen_cmds)
+        act_sequences = padding([s2i(act, w2i_act) for act in acts], maxlen_acts)
+    else:
+        cmd_sequences = np.array([s2i(cmd, w2i_cmd) for cmd in cmds])
+        act_sequences = np.array([s2i(act, w2i_act) for act in acts])
+        
+    cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
+    act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
+    
+    return cmd_sequences, act_sequences
 
-
-#TODO: we might want to implement a shuffled tensor dataloader that does not exploit random.choice (crucial for mini-batch training)
+def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, split:str='train', num_samples:bool=None):
+    """creates mini-batches of source-target pairs
+    Args:
+        cmds (torch.tensor): command sequences
+        acts (torch.tensor): action sequences
+        batch_size (int): number of sequences in each mini-batch
+        split (str): training or testing
+        num_samples (int): number of samples to draw while creating mini-batches (equivalent to number of iterations)
+    Return:
+        PyTorch data loader (DataLoader object)
+    """
+    cmd_act_pairs = TensorDataset(cmds, acts)
+    if split == 'train':
+        isinstance(num_samples, int), 'number of samples to draw has to be specified if split is training'
+        # during training randomly sample elements from the train set 
+        # TODO: figure out, whether replacement should be set to True
+        sampler = RandomSampler(cmd_act_pairs, replacement=True, num_samples=num_samples)
+    elif split == 'test':
+        # during testing sequentially sample elements from the test set (i.e., always sample in the same order)
+        sampler = SequentialSampler(cmd_act_pairs)
+    # sampler and shuffle are mutually exclusive (no shuffling for testing, random sampling for testing)
+    dl = DataLoader(cmd_act_pairs, batch_size=batch_size, shuffle=False, sampler=sampler)
+    return dl
