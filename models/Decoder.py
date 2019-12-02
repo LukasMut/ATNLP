@@ -31,8 +31,9 @@ class DecoderRNN(nn.Module):
         self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded)
         out, hidden = self.rnn(embedded, hidden)
         logits = self.linear(out.squeeze(0))
@@ -59,8 +60,9 @@ class DecoderLSTM(nn.Module):
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded) #TODO: figure out, whether applying a ReLu on embedding inputs is useful
         out, hidden = self.lstm(embedded, hidden)
         logits = self.linear(out.squeeze(0))
@@ -87,8 +89,9 @@ class DecoderGRU(nn.Module):
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded) #TODO: figure out, whether applying a ReLu on embedding inputs is useful
         out, hidden = self.gru(embedded, hidden)
         logits = self.linear(out.squeeze(0))
@@ -119,8 +122,9 @@ class AttnDecoderRNN(nn.Module):
         self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden, encoder_hiddens):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden, encoder_hiddens):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)
@@ -149,8 +153,9 @@ class AttnDecoderLSTM(nn.Module):
         self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden, encoder_hiddens):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden, encoder_hiddens):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)
@@ -182,8 +187,9 @@ class AttnDecoderGRU(nn.Module):
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, word_input, hidden, encoder_hiddens):
-        embedded = self.embedding(word_input).view(1, 1, -1)
+    def forward(self, x_batch, hidden, encoder_hiddens):
+        batch_size = x_batch.size(0)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)

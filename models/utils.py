@@ -23,30 +23,17 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 ### Training ###
 
-def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int=1,
+def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int=1,
           learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
-    
-    # number of training presentations (most training examples are shown multiple times during training, some more often than others)
-    n_iters = 100000
-    
+        
     # each plot_iters display behaviour of RNN Decoder
-    plot_iters = 10000
+    plot_batches = 300
     
     train_losses, train_accs = [], []
     encoder_optimizer = Adam(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=learning_rate)
     
-    # randomly shuffle the source-target language pairs (NOTE: no need to execute the line below for experiment 1b)
-    # np.random.shuffle(lang_pairs)
-    
-    # randomly sample 100k training pairs from the original train data set (with replacement)
-    #training_pairs = [pairs2idx(random.choice(lang_pairs), w2i_source, w2i_target) for _ in range(n_iters)]
-    
-    max_target_length = max(iter(map(lambda lang_pair: len(lang_pair[1]), training_pairs)))
-    n_lang_pairs = len(training_pairs)
-    
-    # negative log-likelihood loss
-    criterion = nn.NLLLoss()
+    n_lang_pairs = len(train_dl) * batch_size
     
     # teacher forcing curriculum
     # decrease teacher forcing ratio per epoch (start off with high ratio and move in equal steps to min_ratio)
@@ -55,16 +42,13 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
     teacher_forcing_ratio = max_ratio
     
     for epoch in trange(epochs,  desc="Epoch"):
-                
-        loss_per_epoch = 0
+        
+        train_batch_losses = []
         acc_per_epoch = 0
         
-        for idx, source, target in enumerate(train_dl):
+        for idx, (command, action, mask) in enumerate(train_dl):
             
-            loss = 0
-            
-            command = train_pair[0].to(device)
-            action = train_pair[1].to(device)
+            loss, n_totals = 0, 0
             
             # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
             encoder_hidden = encoder.init_hidden(batch_size)
@@ -72,65 +56,80 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
-            input_length = command.size(0)
-            target_length = action.size(0)
+            input_length = command.size(1)
+            target_length = action.size(1)
+            
+            #input_lengths = np.array([len(m[m == True]) for m in mask])
 
             encoder_outputs, encoder_hidden = encoder(command, encoder_hidden)
             
-            decoder_input = action[0] # SOS token
+            decoder_input = action[:, 0]
             
             decoder_hidden = encoder_hidden # init decoder hidden with encoder hidden 
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
             pred_sent = ""
-            true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
-
+            true_sent = ' '.join([i2w_target[act.item()] for act in islice(action[0], 1, None)]).strip() # skip SOS token
+            
+            preds = torch.zeros((batch_size, target_length)).to(device)
+            
             if use_teacher_forcing:
                 # Teacher forcing: feed target as the next input
                 for i in range(1, target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     dim = 1 if len(decoder_out.shape) > 1 else 0  # crucial to correctly compute the argmax
-                    pred = torch.argmax(decoder_out, dim) # argmax computation
+                    pred = torch.argmax(decoder_out, dim).to(device) # argmax computation
                     
-                    loss += criterion(decoder_out, action[i].unsqueeze(0))
-                    decoder_input = action[i] # convert list of int into int
+                    # accumulate predictions 
+                    preds[:, i] += pred
+                                        
+                    # calculate and accumulate loss
+                    mask_loss, n_total = maskNLLLoss(decoder_out, action[:, i], mask[:, i])
+                    loss += mask_loss
+                    train_batch_losses.append(mask_loss.item() * n_total)
+                    n_totals += n_total
                     
-                    pred_sent += i2w_target[pred.item()] + " "
+                    decoder_input = action[:, i] 
                     
-                    if pred.squeeze().item() == w2i_target['<EOS>']:
-                        break
+                    pred_sent += i2w_target[pred[0].item()] + " "
+
             else:
                 # Autoregressive RNN: feed previous prediction as the next input
-                for i in range(1, max_target_length):
+                for i in range(1, target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
-                    pred = torch.argmax(decoder_out, dim) # argmax computation
+                    pred = torch.argmax(decoder_out, dim).to(device) # argmax computation
                     
-                    if i >= target_length:
-                        loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'], dtype=torch.long).unsqueeze(0).to(device))
-                    else:
-                        loss += criterion(decoder_out, action[i].unsqueeze(0))
+                    # accumulate predictions 
+                    preds[:, i] += pred
+                    
+                    decoder_input = pred
+                    
+                    mask_loss, n_total = maskNLLLoss(decoder_out, action[:, i], mask[:, i])
+                    loss += mask_loss
+                    train_batch_losses.append(mask_loss.item() * n_total)
+                    n_totals += n_total
                     
                     decoder_input = pred.squeeze() # convert list of int into int
                     
-                    pred_sent += i2w_target[pred.item()] + " "
-                    
-                    if decoder_input.item() == w2i_target['<EOS>']:
-                        break
+                    pred_sent += i2w_target[pred[0].item()] + " "
             
             # strip off any leading or trailing white spaces
             pred_sent = pred_sent.strip()
-            acc_per_epoch += 1 if pred_sent == true_sent else 0 # exact match accuracy
+            
+            for pred, true in zip(preds, action):
+                # copy tensor to CPU before converting it into a NumPy array
+                acc_per_epoch += 1 if np.array_equal(pred.cpu().numpy(), true.cpu().numpy()) else 0 # exact match accuracy
         
             loss.backward()
             
             ### Inspect translation behaviour ###
             if detailed_analysis:
-                nl_command = ' '.join([i2w_source[cmd.item()] for cmd in command]).strip()
-                if idx > 0 and idx % plot_iters == 0:
-                    print("Loss: {}".format(loss.item() / target_length)) # current per sequence loss
-                    print("Acc: {}".format(acc_per_epoch / (idx + 1))) # current per iters exact-match accuracy
+                nl_command = ' '.join([i2w_source[cmd.item()] for cmd in command[0]]).strip()
+                if idx > 0 and idx % plot_batches == 0:
+                    print("Loss: {}".format(loss.item() / n_totals)) # current per sequence loss
+                    print("Acc: {}".format(acc_per_epoch / (idx * batch_size))) # current per iters exact-match accuracy
                     print()
                     print("Command: {}".format(nl_command))
                     print("True action: {}".format(true_sent))
@@ -142,10 +141,8 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                 
             encoder_optimizer.step()
             decoder_optimizer.step()
-
-            loss_per_epoch += loss.item() / target_length
         
-        loss_per_epoch /= n_lang_pairs
+        loss_per_epoch = np.mean(train_batch_losses)
         acc_per_epoch /= n_lang_pairs
         
         print("Train loss: {}".format(loss_per_epoch)) # loss
@@ -162,26 +159,18 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
 
 ### Testing ###
 
-def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int=1, detailed_analysis:bool=True):
+def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int=1, detailed_analysis:bool=True):
     
     # each n_iters plot behaviour of RNN Decoder
     plot_iters = 1000
-    
-    # randomly shuffle our source-target language pairs
-    np.random.shuffle(lang_pairs)
-    test_pairs = [pairs2idx(lang_pair, w2i_source, w2i_target) for lang_pair in lang_pairs]
-    
-    max_target_length = max(iter(map(lambda lang_pair: len(lang_pair[1]), test_pairs)))
-    n_lang_pairs = len(test_pairs)
+        
+    n_lang_pairs = len(test_dl) * batch_size
     
     # NOTE: NO TEACHER FORCING DURING TESTING !!!
                     
     test_acc = 0
 
-    for idx, test_pair in enumerate(test_pairs):
-
-        command = test_pair[0].to(device)
-        action = test_pair[1].to(device)
+    for idx, (command, action) in enumerate(test_dl):
 
         # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
         encoder_hidden = encoder.init_hidden(batch_size)
@@ -199,7 +188,7 @@ def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, de
         true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
 
         # Autoregressive RNN: feed previous prediction as the next input
-        for i in range(1, max_target_length):
+        for i in range(1, target_length):
             decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
             dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
             pred = torch.argmax(decoder_out, dim) # argmax computation

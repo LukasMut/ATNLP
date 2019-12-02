@@ -69,9 +69,9 @@ def s2i(sent:list, w2i:dict, decode:bool=False):
 
 def max_length(seqs:list): return max((len(seq) for seq in seqs))
 
-def padding(seqs:list, max_length:int): return pad_sequences(seqs, maxlen=max_length, dtype='int64', padding='post', value=0)
+def zero_padding(seqs:list, max_length:int): return pad_sequences(seqs, maxlen=max_length, dtype='int64', padding='post', value=0)
 
-def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True):
+def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True, training:bool=True):
     """command-action pair to indices mapping
     Args:
         commands (list): natural language commands (each command is represented through strings)
@@ -82,39 +82,50 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
     Return:
         padded command-action pairs (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
     """
+    pad_tok = 0
     if padding:
-        maxlen_cmds, maxlen_acts = max_length(cmds), max_length(acts)
-        cmd_sequences = padding([s2i(cmd, w2i_cmd) for cmd in cmds], maxlen_cmds)
-        act_sequences = padding([s2i(act, w2i_act) for act in acts], maxlen_acts)
+        maxlen_cmds = max_length(cmds)
+        maxlen_acts = max_length(acts)
+        cmd_sequences = zero_padding([s2i(cmd, w2i_cmd) for cmd in cmds], maxlen_cmds)
+        act_sequences = zero_padding([s2i(act, w2i_act, decode=True) for act in acts], maxlen_acts)
+        
+        if training:
+            act_masks = torch.zeros((act_sequences.shape[0], maxlen_acts), dtype=torch.bool).to(device)
+            for i, act in enumerate(act_sequences):
+                act_masks[i, act != pad_tok] = 1
     else:
         cmd_sequences = np.array([s2i(cmd, w2i_cmd) for cmd in cmds])
-        act_sequences = np.array([s2i(act, w2i_act) for act in acts])
+        act_sequences = np.array([s2i(act, w2i_act, decode=True) for act in acts])
         
     cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
     act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
     
-    return cmd_sequences, act_sequences
+    if training:
+        return cmd_sequences, act_sequences, act_masks
+    else:
+        return cmd_sequences, act_sequences
 
-def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, split:str='train', num_samples:bool=None):
+def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, masks:bool=None, split:str='train', num_samples:bool=None):
     """creates mini-batches of source-target pairs
     Args:
         cmds (torch.tensor): command sequences
         acts (torch.tensor): action sequences
         batch_size (int): number of sequences in each mini-batch
+        masks (torch.tensor): masks for loss have to passed during training but not during inference time
         split (str): training or testing
         num_samples (int): number of samples to draw while creating mini-batches (equivalent to number of iterations)
     Return:
         PyTorch data loader (DataLoader object)
     """
-    cmd_act_pairs = TensorDataset(cmds, acts)
+    data = TensorDataset(cmds, acts, masks) if isinstance(masks, torch.Tensor) else TensorDataset(cmds, acts)
     if split == 'train':
         isinstance(num_samples, int), 'number of samples to draw has to be specified if split is training'
         # during training randomly sample elements from the train set 
         # TODO: figure out, whether replacement should be set to True
-        sampler = RandomSampler(cmd_act_pairs, replacement=True, num_samples=num_samples)
+        sampler = RandomSampler(data, replacement=True, num_samples=num_samples)
     elif split == 'test':
         # during testing sequentially sample elements from the test set (i.e., always sample in the same order)
-        sampler = SequentialSampler(cmd_act_pairs)
+        sampler = SequentialSampler(data)
     # sampler and shuffle are mutually exclusive (no shuffling for testing, random sampling for testing)
-    dl = DataLoader(cmd_act_pairs, batch_size=batch_size, shuffle=False, sampler=sampler)
+    dl = DataLoader(data, batch_size=batch_size, shuffle=False, sampler=sampler)
     return dl

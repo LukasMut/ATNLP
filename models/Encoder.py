@@ -30,11 +30,11 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size)
         self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        seq_len = len(word_inputs)
+        batch_size = x_batch.size(0)
         # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(word_inputs).view(seq_len, 1, -1)
+        embedded = self.embedding(x_batch).view(seq_len, batch_size, -1)
         out, hidden = self.rnn(embedded, hidden)
         return out, hidden
 
@@ -60,11 +60,11 @@ class EncoderLSTM(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size)
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        seq_len = len(word_inputs)
+        batch_size = x_batch.size(0)
         # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(word_inputs).view(seq_len, 1, -1)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         out, hidden = self.lstm(embedded, hidden)
         return out, hidden
     
@@ -91,15 +91,15 @@ class EncoderGRU(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size)
         self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        seq_len = len(word_inputs)
+        batch_size = x_batch.size(0)
         # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(word_inputs).view(seq_len, 1, -1)
+        embedded = self.embedding(x_batch).view(1, batch_size, -1)
         out, hidden = self.gru(embedded, hidden)
         return out, hidden
     
-    def init_hidden(self, batch_size:int=1):
+    def init_hidden(self, batch_size:int):
         # NOTE: we need to initialise twice as many hidden states for bidirectional neural networks
         n = self.n_layers * 2 if self.bidir else self.n_layers 
         hidden_state = torch.zeros(n, batch_size, self.hidden_size, device=device)
