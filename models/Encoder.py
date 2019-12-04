@@ -27,15 +27,22 @@ class EncoderRNN(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
-        self.embedding = nn.Embedding(in_size, emb_size)
-        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
+        self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, x_batch, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(x_batch).view(seq_len, batch_size, -1)
-        out, hidden = self.rnn(embedded, hidden)
+        batch_size, seq_len = x_batch.shape
+        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
+        embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
+        # move x_lengths to CPU 
+        x_lengths = x_lengths.detach().cpu().numpy()
+        packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
+        out, hidden = self.rnn(packed, hidden)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        # if bidirectional, sum outputs of LSTM
+        if self.bidir:
+            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
         return out, hidden
 
     def init_hidden(self, batch_size:int=1):
@@ -57,15 +64,22 @@ class EncoderLSTM(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
-        self.embedding = nn.Embedding(in_size, emb_size)
-        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
+        self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, x_batch, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(x_batch).view(1, batch_size, -1)
-        out, hidden = self.lstm(embedded, hidden)
+        batch_size, seq_len = x_batch.shape
+        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
+        embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
+        # move x_lengths to CPU 
+        x_lengths = x_lengths.detach().cpu().numpy()
+        packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
+        out, hidden = self.lstm(packed, hidden)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        # if bidirectional, sum outputs of LSTM
+        if self.bidir:
+            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
         return out, hidden
     
     def init_hidden(self, batch_size:int=1):
@@ -88,15 +102,22 @@ class EncoderGRU(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
-        self.embedding = nn.Embedding(in_size, emb_size)
-        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout, bidirectional=bidir)
+        self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, x_batch, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents sequence length, second represents batch size, third dim embedding size (if batch_first=False)
-        embedded = self.embedding(x_batch).view(1, batch_size, -1)
-        out, hidden = self.gru(embedded, hidden)
+        batch_size, seq_len = x_batch.shape
+        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
+        embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
+        # move x_lengths to CPU 
+        x_lengths = x_lengths.detach().cpu().numpy()
+        packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
+        out, hidden = self.gru(packed, hidden)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        # if bidirectional, sum outputs of LSTM
+        if self.bidir:
+            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
         return out, hidden
     
     def init_hidden(self, batch_size:int):
