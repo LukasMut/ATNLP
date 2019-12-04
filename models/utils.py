@@ -24,13 +24,10 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 ### Training ###
 
 def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int=1,
-          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
-    
-    # number of training presentations (most training examples are shown multiple times during training, some more often than others)
-    n_iters = 100000
+          n_iters:int, learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
     
     # each plot_iters display behaviour of RNN Decoder
-    plot_iters = 10000
+    plot_iters = 5000
     
     train_losses, train_accs = [], []
     encoder_optimizer = Adam(encoder.parameters(), lr=learning_rate)
