@@ -57,6 +57,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         
         train_batch_losses = []
         acc_per_epoch = 0
+        n_totals = 0
         
         for idx, (commands, input_lengths, actions, masks) in enumerate(train_dl):
            
@@ -66,7 +67,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
            
-            loss, n_totals = 0, 0
+            loss = 0
                         
             # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
             encoder_hidden = encoder.init_hidden(batch_size)
