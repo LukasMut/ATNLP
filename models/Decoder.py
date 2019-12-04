@@ -27,21 +27,17 @@ class DecoderRNN(nn.Module):
         self.n_layers = n_layers
         self.dropout = dropout
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        #self.embedding_dropout = nn.Dropout(dropout)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.embedding = nn.Embedding(out_size, emb_size)
+        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden):
-        batch_size = x_batch.size(0)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
+    def forward(self, word_input, hidden):
+        embedded = self.embedding(word_input).view(1, 1, -1)
         embedded = F.relu(embedded)
         out, hidden = self.rnn(embedded, hidden)
-        # convert 3-dimensional tensor into 2-dimensional matrix (required for linear layer)
-        out = out.squeeze(1)
-        logits = self.linear(out)
-        probas = F.softmax(logits, dim=1)
-        return probas, hidden
+        logits = self.linear(out.squeeze(0))
+        log_probas = F.log_softmax(logits)
+        return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
@@ -59,21 +55,17 @@ class DecoderLSTM(nn.Module):
         self.dropout = dropout
         self.emb_size = emb_size
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        #self.embedding_dropout = nn.Dropout(dropout)
-        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.embedding = nn.Embedding(out_size, emb_size)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden):
-        batch_size = x_batch.size(0)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
-        embedded = F.relu(embedded)
+    def forward(self, word_input, hidden):
+        embedded = self.embedding(word_input).view(1, 1, -1)
+        embedded = F.relu(embedded) #TODO: figure out, whether applying a ReLu on embedding inputs is useful
         out, hidden = self.lstm(embedded, hidden)
-        # convert 3-dimensional tensor into 2-dimensional matrix (required for linear layer)
-        out = out.squeeze(1)
-        logits = self.linear(out)
-        probas = F.softmax(logits, dim=1)
-        return probas, hidden
+        logits = self.linear(out.squeeze(0))
+        log_probas = F.log_softmax(logits, dim=1)
+        return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
@@ -91,21 +83,17 @@ class DecoderGRU(nn.Module):
         self.n_layers = n_layers
         self.dropout = dropout
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.embedding = nn.Embedding(out_size, emb_size)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden):
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
+    def forward(self, word_input, hidden):
+        embedded = self.embedding(word_input).view(1, 1, -1)
         embedded = F.relu(embedded) #TODO: figure out, whether applying a ReLu on embedding inputs is useful
         out, hidden = self.gru(embedded, hidden)
-        # convert 3-dimensional tensor into 2-dimensional matrix (required for linear layer)
-        out = out.squeeze(1)
-        logits = self.linear(out)
-        probas = F.softmax(logits, dim=1)
-        return probas, hidden
+        logits = self.linear(out.squeeze(0))
+        log_probas = F.log_softmax(logits)
+        return log_probas, hidden
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
@@ -125,16 +113,14 @@ class AttnDecoderRNN(nn.Module):
         self.dropout_p = dropout_p
         self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden, encoder_hiddens):
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
+    def forward(self, word_input, hidden, encoder_hiddens):
+        embedded = self.embedding(word_input).view(1, 1, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)
@@ -157,16 +143,14 @@ class AttnDecoderLSTM(nn.Module):
         self.dropout = dropout
         self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
         self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden, encoder_hiddens):
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
+    def forward(self, word_input, hidden, encoder_hiddens):
+        embedded = self.embedding(word_input).view(1, 1, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)
@@ -192,16 +176,14 @@ class AttnDecoderGRU(nn.Module):
         self.dropout_p = dropout_p
         self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
         
-        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.embedding = nn.Embedding(out_size, emb_size)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
-    def forward(self, x_batch, hidden, encoder_hiddens):
-        batch_size = x_batch.size(0)
-        # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
-        embedded = self.embedding(x_batch).view(batch_size, 1, -1)
+    def forward(self, word_input, hidden, encoder_hiddens):
+        embedded = self.embedding(word_input).view(1, 1, -1)
         embedded = F.relu(embedded)
         out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
         out = F.relu(out)
