@@ -107,14 +107,15 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
     if training:
         return cmd_sequences, act_sequences, input_lengths, act_masks
     else:
-        return cmd_sequences, act_sequences
+        return cmd_sequences, act_sequences, input_lengths
 
-def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, masks:bool=None, input_lengths:bool=None, 
+def create_batches(cmds:torch.Tensor, acts:torch.Tensor, input_lengths:torch.Tensor, batch_size:int, masks:bool=None,
                    split:str='train', num_samples:bool=None):
     """creates mini-batches of source-target pairs
     Args:
         cmds (torch.tensor): command sequences
         acts (torch.tensor): action sequences
+        input_lenghts (torch.tensor): number of non-<PAD> tokens per sequence
         batch_size (int): number of sequences in each mini-batch
         masks (torch.tensor): masks for loss have to passed during training but not during inference time
         split (str): training or testing
@@ -122,7 +123,7 @@ def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, masks:b
     Return:
         PyTorch data loader (DataLoader object)
     """
-    data = TensorDataset(cmds, input_lengths, acts, masks) if isinstance(masks, torch.Tensor) and isinstance(input_lengths, torch.Tensor) else TensorDataset(cmds, acts)
+    data = TensorDataset(cmds, input_lengths, acts, masks) if isinstance(masks, torch.Tensor) else TensorDataset(cmds, input_lengths, acts)
     if split == 'train':
         isinstance(num_samples, int), 'number of samples to draw has to be specified if split is training'
         # during training randomly sample elements from the train set 
@@ -130,6 +131,6 @@ def create_batches(cmds:torch.tensor, acts:torch.tensor, batch_size:int, masks:b
     elif split == 'test':
         # during testing sequentially sample elements from the test set (i.e., always sample in the same order)
         sampler = SequentialSampler(data)
-    # sampler and shuffle are mutually exclusive (no shuffling for testing, random sampling for testing)
+    # sampler and shuffle are mutually exclusive (no shuffling for testing, random sampling for training)
     dl = DataLoader(data, batch_size=batch_size, shuffle=False, sampler=sampler)
     return dl

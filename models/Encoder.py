@@ -27,6 +27,7 @@ class EncoderRNN(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
+        #TODO: figure out whether "padding_idx" is necessary
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
@@ -35,7 +36,7 @@ class EncoderRNN(nn.Module):
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
-        # move x_lengths to CPU 
+        # move torch.Tensor with x_lengths to CPU 
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.rnn(packed, hidden)
@@ -64,6 +65,7 @@ class EncoderLSTM(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
+        #TODO: figure out whether "padding_idx" is necessary
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
@@ -72,7 +74,7 @@ class EncoderLSTM(nn.Module):
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
-        # move x_lengths to CPU 
+        # move torch.Tensor with x_lengths to CPU 
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.lstm(packed, hidden)
@@ -102,6 +104,7 @@ class EncoderGRU(nn.Module):
         self.dropout = dropout
         self.bidir = bidir
         
+        #TODO: figure out whether "padding_idx" is necessary
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
@@ -110,7 +113,7 @@ class EncoderGRU(nn.Module):
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, seq_len, -1)
-        # move x_lengths to CPU 
+        # move torch.Tensor with x_lengths to CPU 
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.gru(packed, hidden)
