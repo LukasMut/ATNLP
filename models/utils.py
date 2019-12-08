@@ -20,7 +20,7 @@ np.random.seed(42)
 random.seed(42)
 
 device = ("cuda" if torch.cuda.is_available() else "cpu")
-
+    
 ### Training ###
 
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
@@ -31,22 +31,14 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     # each plot_iters display behaviour of RNN Decoder
     plot_batches = 300
     
+    # gradient clipping
+    clip = 10.0
     
     train_losses, train_accs = [], []
     encoder_optimizer = Adam(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=learning_rate)
     
-    # randomly shuffle the source-target language pairs (NOTE: no need to execute the line below for experiment 1b)
-    # np.random.shuffle(lang_pairs)
-    
-    # randomly sample 100k training pairs from the original train data set (with replacement)
-    training_pairs = [pairs2idx(random.choice(lang_pairs), w2i_source, w2i_target) for _ in range(n_iters)]
-    
-    max_target_length = max(iter(map(lambda lang_pair: len(lang_pair[1]), training_pairs)))
-    n_lang_pairs = len(training_pairs)
-    
-    # negative log-likelihood loss
-    criterion = nn.NLLLoss()
+    n_lang_pairs = len(train_dl) * batch_size
     
     # teacher forcing curriculum
     # decrease teacher forcing ratio per epoch (start off with high ratio and move in equal steps to min_ratio)
@@ -55,9 +47,14 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     teacher_forcing_ratio = max_ratio
     
     for epoch in trange(epochs,  desc="Epoch"):
+        
         acc_per_epoch = 0
         losses_per_epoch = []
         
+        for idx, (commands, input_lengths, actions, masks) in enumerate(train_dl):
+           
+            commands, input_lengths, actions, masks = sort_batch(commands, input_lengths, actions, masks)
+            
             losses_per_batch = []
             
             loss, n_totals = 0, 0
@@ -68,16 +65,13 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                         
             # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
             encoder_hidden = encoder.init_hidden(batch_size)
-            
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
 
-            input_length = command.size(0)
-            target_length = action.size(0)
-
-            encoder_outputs, encoder_hidden = encoder(command, encoder_hidden)
+            target_length = actions.size(1) # max_target_length
+                        
+            encoder_outputs, encoder_hidden = encoder(commands, input_lengths, encoder_hidden)
             
-            decoder_input = action[0] # SOS token
+            decoder_input = actions[:, 0]
+            
             # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
             if hasattr(encoder, 'lstm'):
                 # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
@@ -91,9 +85,6 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             preds = torch.zeros((batch_size, target_length)).to(device)
             preds[:, 0] += 1 #SOS_token
             
-            pred_sent = ""
-            true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
-
             if use_teacher_forcing:
                 # Teacher forcing: feed target as the next input
                 for i in range(1, target_length):
@@ -115,9 +106,8 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 
             else:
                 # Autoregressive RNN: feed previous prediction as the next input
-                for i in range(1, max_target_length):
+                for i in range(1, target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
-
                     _, topi = decoder_out.topk(1)
                     decoder_input = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
                     pred = decoder_input
@@ -148,7 +138,6 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             ### Inspect translation behaviour ###
             if detailed_analysis:
-
                 nl_command = ' '.join([i2w_source[cmd.item()] for cmd in commands[0]]).strip()
                 if idx > 0 and idx % plot_batches == 0:
                     print("Loss: {}".format(current_loss)) # current per sequence loss
@@ -162,12 +151,15 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     print("Pred sent length: {}".format(len(pred_sent.split())))
                     print()
                 
+
+            # clip gradients after each batch (inplace)
+            _ = nn.utils.clip_grad_norm_(encoder.parameters(), clip)
+            _ = nn.utils.clip_grad_norm_(decoder.parameters(), clip)
+            
+            # take step
             encoder_optimizer.step()
             decoder_optimizer.step()
-
-            loss_per_epoch += loss.item() / target_length
         
-
         loss_per_epoch = np.mean(losses_per_epoch)
         acc_per_epoch /= n_lang_pairs
         
@@ -194,7 +186,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     # each n_iters plot behaviour of RNN Decoder
     plot_batches = 50
     # total number of language pairs
-    n_lang_pairs = len(test_dl) * batch_sizeg
+    n_lang_pairs = len(test_dl) * batch_size
     
     # NOTE: NO TEACHER FORCING DURING TESTING !!!
                     

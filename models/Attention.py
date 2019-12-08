@@ -23,5 +23,3 @@ class GeneralAttention(nn.Module):
         # unsqueeze inserts dimension at specified position (0) --> 3D tensor (required for RNN)
         out = self.attn_out(out).unsqueeze(0)
         return out, attn_weights
-                           
-                           

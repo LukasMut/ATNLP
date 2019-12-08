@@ -1,14 +1,16 @@
-__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 's2i', 'pairs2idx']
+__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 'max_length', 's2i', 'pairs2idx', 'create_batches']
 
 import numpy as np
 import os
 import re
 import torch
 
-from collections import defaultdict
+from collections import defaultdict, Counter
+from keras.preprocessing.sequence import pad_sequences
 from torch.autograd import Variable
-#TODO: import TensorDataset to load source-target language pairs more efficiently
-from torch.utils.data import TensorDataset
+from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
+
+device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
@@ -48,7 +50,7 @@ def sort_dict(some_dict:dict): return dict(sorted(some_dict.items(), key=lambda 
 
 def w2i(vocab:dict):
     # NOTE: with batch_size = 1 we don't make use of the special <PAD> token (only necessary for mini-batch training)
-    w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
+    w2i = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2}
     n_special_toks = len(w2i)
     for i, w in enumerate(vocab.keys()):
         w2i[w] = i + n_special_toks
@@ -57,31 +59,37 @@ def w2i(vocab:dict):
 
 def create_pairs(cmds:list, acts:list): return list(zip(cmds, acts))
 
-def s2i(sent:list, w2i:dict, decode:bool=False):
+def s2i(sent:list, w2i:dict, decode:bool):
     indices = [w2i['<SOS>']] if decode else []
     for w in sent:
         indices.append(w2i[w])
     indices.append(w2i['<EOS>'])
-    return indices
+    return np.array(indices)
 
-def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
+def max_length(seqs:list): return max((len(seq) for seq in seqs))
+
+def zero_padding(seqs:list, max_length:int, pad_token:int):
+    return pad_sequences(seqs, maxlen=max_length, dtype='int64', padding='post', truncating='post', value=pad_token)
+
+def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True, training:bool=True):
     """command-action pair to indices mapping
     Args:
-        cmd_act_pair (list): each action / command is represented through strings
+        commands (list): natural language commands (each command is represented through strings)
+        actions (list): target actions (each action is represented through strings)
         w2i_cmd (dict): word2idx input language dictionary (commands)
         w2i_act (dict): word2idx output language dictionary (actions)
         padding (bool): specifies whether zero-padding should be performed
     Return:
         padded command-action pairs (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
     """
-    pad_tok = 0
+    pad_token = 0
     if padding:
         cmd_sequences = [s2i(cmd, w2i_cmd, decode=False) for cmd in cmds]
         act_sequences = [s2i(act, w2i_act, decode=True) for act in acts]
         maxlen_cmds = max_length(cmd_sequences)
         maxlen_acts = max_length(act_sequences)
-        cmd_sequences = zero_padding(cmd_sequences, maxlen_cmds)
-        act_sequences = zero_padding(act_sequences, maxlen_acts)
+        cmd_sequences = zero_padding(cmd_sequences, maxlen_cmds, pad_token)
+        act_sequences = zero_padding(act_sequences, maxlen_acts, pad_token)
         
         if training:
             act_masks = torch.zeros((act_sequences.shape[0], maxlen_acts), dtype=torch.bool).to(device)
@@ -93,7 +101,7 @@ def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
         
     cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
     act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
-    input_lengths = torch.tensor([len(seq[seq != 0]) for seq in cmd_sequences], dtype=torch.long).to(device)
+    input_lengths = torch.tensor([len(seq[seq != pad_token]) for seq in cmd_sequences], dtype=torch.long).to(device)
     
     if training:
         return cmd_sequences, act_sequences, input_lengths, act_masks
@@ -112,11 +120,11 @@ def create_batches(cmds:torch.Tensor, acts:torch.Tensor, input_lengths:torch.Ten
         split (str): training or testing
         num_samples (int): number of samples to draw while creating mini-batches (equivalent to number of iterations)
     Return:
-        command-action pair (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
+        PyTorch data loader (DataLoader object)
     """
     data = TensorDataset(cmds, input_lengths, acts, masks) if isinstance(masks, torch.Tensor) else TensorDataset(cmds, input_lengths, acts)
     if split == 'train':
-        isinstance(num_samples, int), 'number of samples to draw has to be specified if split is training'
+        isinstance(num_samples, int), 'number of samples to draw must be specified if split is training'
         # during training randomly sample elements from the train set 
         sampler = RandomSampler(data, replacement=True, num_samples=num_samples)
     elif split == 'test':

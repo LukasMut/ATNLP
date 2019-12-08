@@ -31,7 +31,7 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
@@ -69,7 +69,7 @@ class EncoderLSTM(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
@@ -108,7 +108,7 @@ class EncoderGRU(nn.Module):
         self.embedding = nn.Embedding(in_size, emb_size, padding_idx=0)
         self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout, bidirectional=bidir)
         
-    def forward(self, word_inputs, hidden):
+    def forward(self, x_batch, x_lengths, hidden):
         # NOTE: we run this all at once (over the whole input sequence)
         batch_size, seq_len = x_batch.shape
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
@@ -123,7 +123,7 @@ class EncoderGRU(nn.Module):
             out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
         return out, hidden
     
-    def init_hidden(self, batch_size:int=1):
+    def init_hidden(self, batch_size:int):
         # NOTE: we need to initialise twice as many hidden states for bidirectional neural networks
         n = self.n_layers * 2 if self.bidir else self.n_layers 
         # NOTE: opposed to LSTM, GRUs don't need cell state (GRUs work similar to simple Elman RNNs)
