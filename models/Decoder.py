@@ -29,7 +29,7 @@ class DecoderRNN(nn.Module):
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         #self.embedding_dropout = nn.Dropout(dropout)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden):
@@ -92,7 +92,7 @@ class DecoderGRU(nn.Module):
         self.dropout = dropout
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden):
@@ -109,9 +109,7 @@ class DecoderGRU(nn.Module):
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
-        return hidden
+        return nn.init.xavier_uniform_(hidden_state)
     
     
 class AttnDecoderRNN(nn.Module):
@@ -128,7 +126,7 @@ class AttnDecoderRNN(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
@@ -160,7 +158,7 @@ class AttnDecoderLSTM(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
@@ -195,7 +193,7 @@ class AttnDecoderGRU(nn.Module):
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         self.attention = GeneralAttention(hidden_size, seq_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
@@ -211,6 +209,4 @@ class AttnDecoderGRU(nn.Module):
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
-        return hidden
+        return nn.init.xavier_uniform_(hidden_state)

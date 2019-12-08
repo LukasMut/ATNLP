@@ -25,7 +25,9 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
           learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
-        
+    
+    PAD_token = 0
+    
     # each plot_iters display behaviour of RNN Decoder
     plot_batches = 300
     
@@ -70,7 +72,12 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             decoder_input = actions[:, 0]
             
-            decoder_hidden = encoder_hidden[:decoder.n_layers] # init decoder hidden with encoder hidden 
+            # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
+            if hasattr(encoder, 'lstm'):
+                # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                decoder_hidden = tuple([hidden[:decoder.n_layers] for hidden in encoder_hidden])
+            else:
+                decoder_hidden = encoder_hidden[:decoder.n_layers]
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
@@ -115,7 +122,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     pred_sent += i2w_target[pred[0].item()] + " "
                 
             # skip <SOS> token and ignore <PAD> tokens
-            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != 0]).strip()
+            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != PAD_token]).strip()
             
             # strip off any leading or trailing white spaces
             pred_sent = pred_sent.strip().split()
@@ -256,18 +263,16 @@ def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True)
     indices, commands = zip(*sorted(enumerate(commands.cpu().numpy()), key=lambda seq: len(seq[1][seq[1] != 0]), reverse=True))
     indices = np.array(list(indices))
     commands = torch.tensor(np.array(list(commands)), dtype=torch.long).to(device)
-    input_lengths = input_lengths[indices]
-    actions = actions[indices]
     if training:
-        isinstance(masks, torch.Tensor), "pass tensor of token masks during training"
-        masks = masks[indices]
-        return commands, input_lengths, actions, masks
+        isinstance(masks, torch.Tensor), "tensor of token masks must be passed during training"
+        return commands, input_lengths[indices], actions[indices], masks[indices]
     else:
-        return commands, input_lengths, actions
+        return commands, input_lengths[indices], actions[indices]
 
 # exact match accuracy for mini-batch MT
 
 def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, acc:int):
+    EOS_token = 2
     isinstance(acc, int)
     for pred, true in zip(pred_actions, true_actions):
         # copy tensor to CPU before converting it into a NumPy array
@@ -275,8 +280,8 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
         true = true.cpu().numpy().tolist()
         # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
         try:
-            pred = pred[:pred.index(2)+1]
-            true = true[:true.index(2)+1]
+            pred = pred[:pred.index(EOS_token)+1]
+            true = true[:true.index(EOS_token)+1]
             acc += 1 if np.array_equal(pred, true) else 0 # exact match accuracy
         except ValueError:
             continue

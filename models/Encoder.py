@@ -126,7 +126,6 @@ class EncoderGRU(nn.Module):
     def init_hidden(self, batch_size:int):
         # NOTE: we need to initialise twice as many hidden states for bidirectional neural networks
         n = self.n_layers * 2 if self.bidir else self.n_layers 
+        # NOTE: opposed to LSTM, GRUs don't need cell state (GRUs work similar to simple Elman RNNs)
         hidden_state = torch.zeros(n, batch_size, self.hidden_size, device=device)
-        cell_state = torch.zeros(n, batch_size, self.hidden_size, device=device)
-        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
-        return hidden
+        return nn.init.xavier_uniform_(hidden_state)
