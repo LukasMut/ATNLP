@@ -26,6 +26,7 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
           learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
     
+    # <PAD> token corresponds to index 0
     PAD_token = 0
     
     # each plot_iters display behaviour of RNN Decoder
@@ -40,7 +41,8 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     
     n_lang_pairs = len(train_dl) * batch_size
     
-    # teacher forcing curriculum
+    ## teacher forcing curriculum ##
+    
     # decrease teacher forcing ratio per epoch (start off with high ratio and move in equal steps to min_ratio)
     ratio_diff = max_ratio-min_ratio
     step_per_epoch = ratio_diff / epochs
@@ -63,7 +65,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
                         
-            # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
+            # initialise as many hidden states as there are sequences in the mini-batch
             encoder_hidden = encoder.init_hidden(batch_size)
 
             target_length = actions.size(1) # max_target_length
@@ -72,7 +74,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             decoder_input = actions[:, 0]
             
-            # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
+            # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
             if hasattr(encoder, 'lstm'):
                 # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
                 decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
@@ -160,6 +162,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             encoder_optimizer.step()
             decoder_optimizer.step()
         
+        # compute loss and accuracy per epoch
         loss_per_epoch = np.mean(losses_per_epoch)
         acc_per_epoch /= n_lang_pairs
         
@@ -170,7 +173,8 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         train_losses.append(loss_per_epoch)
         train_accs.append(acc_per_epoch)
         
-        teacher_forcing_ratio -= step_per_epoch # decrease teacher forcing ratio
+        # decrease teacher forcing ratio per epoch
+        teacher_forcing_ratio -= step_per_epoch 
         
     return train_losses, train_accs, encoder, decoder
 
