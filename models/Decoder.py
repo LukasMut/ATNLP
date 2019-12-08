@@ -27,8 +27,9 @@ class DecoderRNN(nn.Module):
         self.n_layers = n_layers
         self.dropout = dropout
         
-        self.embedding = nn.Embedding(out_size, emb_size)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
+        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        #self.embedding_dropout = nn.Dropout(dropout)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden):
@@ -83,8 +84,8 @@ class DecoderGRU(nn.Module):
         self.n_layers = n_layers
         self.dropout = dropout
         
-        self.embedding = nn.Embedding(out_size, emb_size)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
+        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden):
@@ -97,26 +98,24 @@ class DecoderGRU(nn.Module):
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
-        return hidden
+        return nn.init.xavier_uniform_(hidden_state)
     
     
 class AttnDecoderRNN(nn.Module):
     
-    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderRNN, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout_p = dropout_p
-        self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
+        self.max_length = max_length # max target sequence length
         
-        self.embedding = nn.Embedding(out_size, emb_size)
-        self.attention = GeneralAttention(hidden_size, seq_length)
+        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.attention = GeneralAttention(hidden_size, max_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.rnn = nn.RNN(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -134,19 +133,19 @@ class AttnDecoderRNN(nn.Module):
         
 class AttnDecoderLSTM(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderLSTM, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
-        self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
+        self.max_length = max_length # max target sequence length
         
-        self.embedding = nn.Embedding(out_size, emb_size)
-        self.attention = GeneralAttention(hidden_size, seq_length)
+        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.attention = GeneralAttention(hidden_size, max_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -167,19 +166,19 @@ class AttnDecoderLSTM(nn.Module):
     
 class AttnDecoderGRU(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, seq_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
         super(AttnDecoderGRU, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout_p = dropout_p
-        self.seq_length = seq_length # length of the source sentence (i.e., len(encoder_hiddens))
+        self.max_length = max_length # max target sequence length
         
-        self.embedding = nn.Embedding(out_size, emb_size)
-        self.attention = GeneralAttention(hidden_size, seq_length)
+        self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
+        self.attention = GeneralAttention(hidden_size, max_length)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, word_input, hidden, encoder_hiddens):
@@ -193,6 +192,4 @@ class AttnDecoderGRU(nn.Module):
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        cell_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
-        hidden = (nn.init.xavier_uniform_(hidden_state), nn.init.xavier_uniform_(cell_state))
-        return hidden
+        return nn.init.xavier_uniform_(hidden_state)

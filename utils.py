@@ -69,11 +69,59 @@ def pairs2idx(cmd_act_pair:tuple, w2i_cmd:dict, w2i_act:dict):
     Args:
         cmd_act_pair (list): each action / command is represented through strings
         w2i_cmd (dict): word2idx input language dictionary (commands)
-        w2i_act (dict): word2idx output language dictionary (actions) 
+        w2i_act (dict): word2idx output language dictionary (actions)
+        padding (bool): specifies whether zero-padding should be performed
+    Return:
+        padded command-action pairs (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
+    """
+    pad_tok = 0
+    if padding:
+        cmd_sequences = [s2i(cmd, w2i_cmd, decode=False) for cmd in cmds]
+        act_sequences = [s2i(act, w2i_act, decode=True) for act in acts]
+        maxlen_cmds = max_length(cmd_sequences)
+        maxlen_acts = max_length(act_sequences)
+        cmd_sequences = zero_padding(cmd_sequences, maxlen_cmds)
+        act_sequences = zero_padding(act_sequences, maxlen_acts)
+        
+        if training:
+            act_masks = torch.zeros((act_sequences.shape[0], maxlen_acts), dtype=torch.bool).to(device)
+            for i, act in enumerate(act_sequences):
+                act_masks[i, act != pad_tok] = 1
+    else:
+        cmd_sequences = np.array([s2i(cmd, w2i_cmd, decode=False) for cmd in cmds])
+        act_sequences = np.array([s2i(act, w2i_act, decode=True) for act in acts])
+        
+    cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
+    act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
+    input_lengths = torch.tensor([len(seq[seq != 0]) for seq in cmd_sequences], dtype=torch.long).to(device)
+    
+    if training:
+        return cmd_sequences, act_sequences, input_lengths, act_masks
+    else:
+        return cmd_sequences, act_sequences, input_lengths
+
+def create_batches(cmds:torch.Tensor, acts:torch.Tensor, input_lengths:torch.Tensor, batch_size:int, masks:bool=None,
+                   split:str='train', num_samples:bool=None):
+    """creates mini-batches of source-target pairs
+    Args:
+        cmds (torch.tensor): command sequences
+        acts (torch.tensor): action sequences
+        input_lenghts (torch.tensor): number of non-<PAD> tokens per sequence
+        batch_size (int): number of sequences in each mini-batch
+        masks (torch.tensor): masks for loss have to passed during training but not during inference time
+        split (str): training or testing
+        num_samples (int): number of samples to draw while creating mini-batches (equivalent to number of iterations)
     Return:
         command-action pair (tuple): each sentence is represented through a torch.tensor of corresponding indices in the vocab
     """
-    cmd, act = cmd_act_pair
-    cmd_seq = Variable(torch.tensor(s2i(cmd, w2i_cmd), dtype=torch.long))
-    act_seq = Variable(torch.tensor(s2i(act, w2i_act, decode=True), dtype=torch.long))
-    return (cmd_seq, act_seq)
+    data = TensorDataset(cmds, input_lengths, acts, masks) if isinstance(masks, torch.Tensor) else TensorDataset(cmds, input_lengths, acts)
+    if split == 'train':
+        isinstance(num_samples, int), 'number of samples to draw has to be specified if split is training'
+        # during training randomly sample elements from the train set 
+        sampler = RandomSampler(data, replacement=True, num_samples=num_samples)
+    elif split == 'test':
+        # during testing sequentially sample elements from the test set (i.e., always sample in the same order)
+        sampler = SequentialSampler(data)
+    # sampler and shuffle are mutually exclusive (no shuffling for testing, random sampling for training)
+    dl = DataLoader(data, batch_size=batch_size, shuffle=False, sampler=sampler)
+    return dl

@@ -23,11 +23,14 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 ### Training ###
 
-def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int=1,
-          n_iters:int, learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
+def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
+          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
+    
+    PAD_token = 0
     
     # each plot_iters display behaviour of RNN Decoder
-    plot_iters = 5000
+    plot_batches = 300
+    
     
     train_losses, train_accs = [], []
     encoder_optimizer = Adam(encoder.parameters(), lr=learning_rate)
@@ -52,17 +55,17 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
     teacher_forcing_ratio = max_ratio
     
     for epoch in trange(epochs,  desc="Epoch"):
-                
-        loss_per_epoch = 0
         acc_per_epoch = 0
+        losses_per_epoch = []
         
-        for idx, train_pair in enumerate(training_pairs):
+            losses_per_batch = []
             
-            loss = 0
+            loss, n_totals = 0, 0
             
-            command = train_pair[0].to(device)
-            action = train_pair[1].to(device)
-            
+            # zero gradients
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
+                        
             # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
             encoder_hidden = encoder.init_hidden(batch_size)
             
@@ -75,10 +78,18 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
             encoder_outputs, encoder_hidden = encoder(command, encoder_hidden)
             
             decoder_input = action[0] # SOS token
-            
-            decoder_hidden = encoder_hidden # init decoder hidden with encoder hidden 
+            # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
+            if hasattr(encoder, 'lstm'):
+                # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                decoder_hidden = tuple([hidden[:decoder.n_layers] for hidden in encoder_hidden])
+            else:
+                decoder_hidden = encoder_hidden[:decoder.n_layers]
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+            
+            pred_sent = ""            
+            preds = torch.zeros((batch_size, target_length)).to(device)
+            preds[:, 0] += 1 #SOS_token
             
             pred_sent = ""
             true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
@@ -87,47 +98,61 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                 # Teacher forcing: feed target as the next input
                 for i in range(1, target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                    dim = 1 if len(decoder_out.shape) > 1 else 0  # crucial to correctly compute the argmax
-                    pred = torch.argmax(decoder_out, dim) # argmax computation
+                    _, topi = decoder_out.topk(1)
+                    pred = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
                     
-                    loss += criterion(decoder_out, action[i].unsqueeze(0))
-                    decoder_input = action[i] # convert list of int into int
+                    # accumulate predictions 
+                    preds[:, i] += pred
+
+                    # calculate and accumulate loss
+                    mask_loss, n_total = maskNLLLoss(decoder_out, actions[:, i], masks[:, i])
+                    loss += mask_loss
+                    losses_per_batch.append(mask_loss.item() * n_total)
+                    n_totals += n_total
+                    decoder_input = actions[:, i] 
                     
-                    pred_sent += i2w_target[pred.item()] + " "
-                    
-                    if pred.squeeze().item() == w2i_target['<EOS>']:
-                        break
+                    pred_sent += i2w_target[pred[0].item()] + " "
+
             else:
                 # Autoregressive RNN: feed previous prediction as the next input
                 for i in range(1, max_target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                    dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
-                    pred = torch.argmax(decoder_out, dim) # argmax computation
+
+                    _, topi = decoder_out.topk(1)
+                    decoder_input = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
+                    pred = decoder_input
                     
-                    if i >= target_length:
-                        loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'], dtype=torch.long).unsqueeze(0).to(device))
-                    else:
-                        loss += criterion(decoder_out, action[i].unsqueeze(0))
+                    # accumulate predictions 
+                    preds[:, i] += pred
+                    mask_loss, n_total = maskNLLLoss(decoder_out, actions[:, i], masks[:, i])
+                    loss += mask_loss
+                    losses_per_batch.append(mask_loss.item() * n_total)
+                    n_totals += n_total
                     
-                    decoder_input = pred.squeeze() # convert list of int into int
-                    
-                    pred_sent += i2w_target[pred.item()] + " "
-                    
-                    if decoder_input.item() == w2i_target['<EOS>']:
-                        break
+                    pred_sent += i2w_target[pred[0].item()] + " "
+                
+            # skip <SOS> token and ignore <PAD> tokens
+            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != PAD_token]).strip()
             
             # strip off any leading or trailing white spaces
-            pred_sent = pred_sent.strip()
-            acc_per_epoch += 1 if pred_sent == true_sent else 0 # exact match accuracy
-        
+            pred_sent = pred_sent.strip().split()
+            pred_sent = ' '.join(pred_sent[:true_sent.split().index('<EOS>')+1])
+            
+            # update accuracy
+            acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
+
             loss.backward()
+            
+            current_loss = np.sum(losses_per_batch) / n_totals
+            losses_per_epoch.append(current_loss)
             
             ### Inspect translation behaviour ###
             if detailed_analysis:
-                nl_command = ' '.join([i2w_source[cmd.item()] for cmd in command]).strip()
-                if idx > 0 and idx % plot_iters == 0:
-                    print("Loss: {}".format(loss.item() / target_length)) # current per sequence loss
-                    print("Acc: {}".format(acc_per_epoch / (idx + 1))) # current per iters exact-match accuracy
+
+                nl_command = ' '.join([i2w_source[cmd.item()] for cmd in commands[0]]).strip()
+                if idx > 0 and idx % plot_batches == 0:
+                    print("Loss: {}".format(current_loss)) # current per sequence loss
+                    print("Acc: {}".format(acc_per_epoch / (batch_size * (idx + 1)))) # current per iters exact-match accuracy
                     print()
                     print("Command: {}".format(nl_command))
                     print("True action: {}".format(true_sent))
@@ -142,7 +167,8 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
 
             loss_per_epoch += loss.item() / target_length
         
-        loss_per_epoch /= n_lang_pairs
+
+        loss_per_epoch = np.mean(losses_per_epoch)
         acc_per_epoch /= n_lang_pairs
         
         print("Train loss: {}".format(loss_per_epoch)) # loss
@@ -159,82 +185,129 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
 
 ### Testing ###
 
-def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int=1, detailed_analysis:bool=True):
+def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int, detailed_analysis:bool=True):
+    
+    # set models into evaluation mode
+    encoder.eval()
+    decoder.eval()
     
     # each n_iters plot behaviour of RNN Decoder
-    plot_iters = 1000
-    
-    # randomly shuffle our source-target language pairs
-    np.random.shuffle(lang_pairs)
-    test_pairs = [pairs2idx(lang_pair, w2i_source, w2i_target) for lang_pair in lang_pairs]
-    
-    max_target_length = max(iter(map(lambda lang_pair: len(lang_pair[1]), test_pairs)))
-    n_lang_pairs = len(test_pairs)
+    plot_batches = 50
+    # total number of language pairs
+    n_lang_pairs = len(test_dl) * batch_sizeg
     
     # NOTE: NO TEACHER FORCING DURING TESTING !!!
                     
     test_acc = 0
+    
+    # no gradient computation for evaluation mode
+    with torch.no_grad():
+        for idx, (commands, input_lengths, actions) in enumerate(test_dl):
+            # if current batch_size is smaller than batch_size, skip batch
+            if len(commands) != batch_size:
+                n_lang_pairs_not_tested = len(commands)
+                continue
 
-    for idx, test_pair in enumerate(test_pairs):
+            commands, input_lengths, actions = sort_batch(commands, input_lengths, actions, training=False)
 
-        command = test_pair[0].to(device)
-        action = test_pair[1].to(device)
+            # initialise as many hidden states as there are sequences in the mini-batch (i.e., = batch_size)
+            encoder_hidden = encoder.init_hidden(batch_size)
 
-        # initialise as many hidden states as there are sequences in the mini-batch (1 for the beginning)
-        encoder_hidden = encoder.init_hidden(batch_size)
+            target_length = actions.size(1) # max_target_length
 
-        input_length = command.size(0)
-        target_length = action.size(0)
+            encoder_outputs, encoder_hidden = encoder(commands, input_lengths, encoder_hidden)
 
-        encoder_outputs, encoder_hidden = encoder(command, encoder_hidden)
+            decoder_input = actions[:, 0]
 
-        decoder_input = action[0] # SOS token
+            decoder_hidden = encoder_hidden[:decoder.n_layers] # init decoder hidden with encoder hidden n 
 
-        decoder_hidden = encoder_hidden # init decoder hidden with encoder hidden 
+            pred_sent = ""            
+            preds = torch.zeros((batch_size, target_length)).to(device)
+            preds[:, 0] += 1 #SOS_token
 
-        pred_sent = ""
-        true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
+            # Autoregressive RNN: feed previous prediction as the next input
+            for i in range(1, target_length):
+                decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                _, topi = decoder_out.topk(1)
+                decoder_input = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
+                pred = decoder_input
+                # accumulate predictions 
+                preds[:, i] += pred
+                pred_sent += i2w_target[pred[0].item()] + " "
 
-        # Autoregressive RNN: feed previous prediction as the next input
-        for i in range(1, max_target_length):
-            decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
-            dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
-            pred = torch.argmax(decoder_out, dim) # argmax computation
+            # skip <SOS> token and ignore <PAD> tokens
+            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != 0]).strip()
 
-            decoder_input = pred.squeeze() # convert list of int into int
+            # strip off any leading or trailing white spaces
+            pred_sent = pred_sent.strip().split()
+            pred_sent = ' '.join(pred_sent[:true_sent.split().index('<EOS>')+1])
+            
+            # update accuracy
+            test_acc = exact_match_accuracy(preds, actions, test_acc)
 
-            pred_sent += i2w_target[pred.item()] + " "
-
-            if decoder_input.item() == w2i_target['<EOS>']:
-                break
-
-        # strip off any leading or trailing white spaces
-        pred_sent = pred_sent.strip()
-        test_acc += 1 if pred_sent == true_sent else 0 # exact match accuracy
-
-        ### Inspect translation behaviour ###
-        if detailed_analysis:
-            nl_command = ' '.join([i2w_source[cmd.item()] for cmd in command]).strip()
-            if idx > 0 and idx % plot_iters == 0:
-                print("Test acc: {}".format(test_acc / (idx + 1))) # current per iters exact-match accuracy
-                print()
-                print("Command: {}".format(nl_command))
-                print("True action: {}".format(true_sent))
-                print("Pred action: {}".format(pred_sent))
-                print()
-                print("True sent length: {}".format(len(true_sent.split())))
-                print("Pred sent length: {}".format(len(pred_sent.split())))
-                print()
+            ### Inspect translation behaviour ###
+            if detailed_analysis:
+                nl_command = ' '.join([i2w_source[cmd.item()] for cmd in commands[0]]).strip()
+                if idx > 0 and idx % plot_batches == 0:
+                    print("Current test acc: {}".format(test_acc / (batch_size * (idx + 1)))) # current per iters exact-match accuracy
+                    print()
+                    print("Command: {}".format(nl_command))
+                    print("True action: {}".format(true_sent))
+                    print("Pred action: {}".format(pred_sent))
+                    print()
+                    print("True sent length: {}".format(len(true_sent.split())))
+                    print("Pred sent length: {}".format(len(pred_sent.split())))
+                    print()
                 
-    test_acc /= n_lang_pairs
+    test_acc /= (n_lang_pairs - n_lang_pairs_not_tested)
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     return test_acc
 
+### Helper functions for training and testing ###
 
-## Sampling function for experiment 1b ##
+# batch sorting function (necessary for mini-batch training)
+
+def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True):
+    indices, commands = zip(*sorted(enumerate(commands.cpu().numpy()), key=lambda seq: len(seq[1][seq[1] != 0]), reverse=True))
+    indices = np.array(list(indices))
+    commands = torch.tensor(np.array(list(commands)), dtype=torch.long).to(device)
+    if training:
+        isinstance(masks, torch.Tensor), "tensor of token masks must be passed during training"
+        return commands, input_lengths[indices], actions[indices], masks[indices]
+    else:
+        return commands, input_lengths[indices], actions[indices]
+
+# exact match accuracy for mini-batch MT
+
+def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, acc:int):
+    EOS_token = 2
+    isinstance(acc, int)
+    for pred, true in zip(pred_actions, true_actions):
+        # copy tensor to CPU before converting it into a NumPy array
+        pred = pred.cpu().numpy().tolist()
+        true = true.cpu().numpy().tolist()
+        # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
+        try:
+            pred = pred[:pred.index(EOS_token)+1]
+            true = true[:true.index(EOS_token)+1]
+            acc += 1 if np.array_equal(pred, true) else 0 # exact match accuracy
+        except ValueError:
+            continue
+    return acc
+
+# masked negative log-likelihood loss (necessary for mini-batch training)
+
+def maskNLLLoss(pred, target, mask):
+    nTotal = mask.sum()
+    crossEntropy = -torch.log(torch.gather(pred, 1, target.view(-1, 1)).squeeze(1))
+    loss = crossEntropy.masked_select(mask).mean()
+    loss = loss.to(device)
+    return loss, nTotal.item()
+
+# sampling function for experiment 1b #
 
 def sample_distinct_pairs(cmd_act_pairs:list, ratio:float):
-    # randomly shuffle the data set prior to picking distinct examples
+    # randomly shuffle the data set prior to picking distinct examples from train set
     np.random.shuffle(cmd_act_pairs)
     n_lang_pairs = len(cmd_act_pairs)
     n_distinct_samples = int(n_lang_pairs * ratio)        
