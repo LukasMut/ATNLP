@@ -75,7 +75,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
             if hasattr(encoder, 'lstm'):
                 # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                decoder_hidden = tuple([hidden[:decoder.n_layers] for hidden in encoder_hidden])
+                decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
             else:
                 decoder_hidden = encoder_hidden[:decoder.n_layers]
 
@@ -211,7 +211,12 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
             decoder_input = actions[:, 0]
 
-            decoder_hidden = encoder_hidden[:decoder.n_layers] # init decoder hidden with encoder hidden n 
+            # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
+            if hasattr(encoder, 'lstm'):
+                # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+            else:
+                decoder_hidden = encoder_hidden[:decoder.n_layers]
 
             pred_sent = ""            
             preds = torch.zeros((batch_size, target_length)).to(device)
