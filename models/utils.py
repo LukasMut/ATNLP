@@ -99,8 +99,10 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 
                     # calculate and accumulate loss
                     mask_loss, n_total = maskNLLLoss(decoder_out, actions[:, i], masks[:, i])
-                    loss += mask_loss
-                    losses_per_batch.append(mask_loss.item() * n_total)
+                    # mask loss is NaN towards the end, if batch only consists of sequences that are shorter than max_length
+                    if not torch.isnan(mask_loss) and n_total > 0: 
+                        loss += mask_loss
+                        losses_per_batch.append(mask_loss.item() * n_total)
                     n_totals += n_total
                     decoder_input = actions[:, i] 
                     
@@ -117,12 +119,14 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     # accumulate predictions 
                     preds[:, i] += pred
                     mask_loss, n_total = maskNLLLoss(decoder_out, actions[:, i], masks[:, i])
-                    loss += mask_loss
-                    losses_per_batch.append(mask_loss.item() * n_total)
+                    if not torch.isnan(mask_loss) and n_total > 0:
+                        loss += mask_loss
+                        losses_per_batch.append(mask_loss.item() * n_total)
                     n_totals += n_total
+
+                         
                     
                     pred_sent += i2w_target[pred[0].item()] + " "
-                
             # skip <SOS> token and ignore <PAD> tokens
             true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != PAD_token]).strip()
             
@@ -268,8 +272,8 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
 # batch sorting function (necessary for mini-batch training)
 
-def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True):
-    indices, commands = zip(*sorted(enumerate(commands.cpu().numpy()), key=lambda seq: len(seq[1][seq[1] != 0]), reverse=True))
+def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True, pad_token:int=0):
+    indices, commands = zip(*sorted(enumerate(commands.cpu().numpy()), key=lambda seq: len(seq[1][seq[1] != pad_token]), reverse=True))
     indices = np.array(list(indices))
     commands = torch.tensor(np.array(list(commands)), dtype=torch.long).to(device)
     if training:

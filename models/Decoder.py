@@ -83,7 +83,7 @@ class DecoderLSTM(nn.Module):
     
 class DecoderGRU(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
         super(DecoderGRU, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -114,19 +114,18 @@ class DecoderGRU(nn.Module):
     
 class AttnDecoderRNN(nn.Module):
     
-    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
         super(AttnDecoderRNN, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
-        self.dropout_p = dropout_p
+        self.dropout = dropout
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = GeneralAttention(hidden_size, max_length)
-        self.dropout = nn.Dropout(self.dropout_p)
-        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
+        self.attention = MultiplicativeAttention(hidden_size)
+        self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
@@ -134,11 +133,12 @@ class AttnDecoderRNN(nn.Module):
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
+        out, hidden = self.rnn(embedded, hidden)
         out = F.relu(out)
-        out, hidden = self.rnn(out, hidden)
-        log_probas = F.log_softmax(self.linear(out.squeeze(0)), dim=1)
-        return log_probas, hidden, attn_weights
+        context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        probas = F.softmax(logits, dim=1)
+        return probas, hidden
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
@@ -146,7 +146,7 @@ class AttnDecoderRNN(nn.Module):
         
 class AttnDecoderLSTM(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
         super(AttnDecoderLSTM, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -156,9 +156,8 @@ class AttnDecoderLSTM(nn.Module):
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = GeneralAttention(hidden_size, max_length)
-        self.dropout = nn.Dropout(self.dropout_p)
-        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout_p)
+        self.attention = MultiplicativeAttention(hidden_size)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
@@ -166,11 +165,12 @@ class AttnDecoderLSTM(nn.Module):
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
+        out, hidden = self.lstm(embedded, hidden)
         out = F.relu(out)
-        out, hidden = self.lstm(out, hidden)
-        log_probas = F.log_softmax(self.linear(out.squeeze(0)), dim=1)
-        return log_probas, hidden, attn_weights
+        context, attn_weights = self.attention(hidden[0][-1], encoder_hiddens)
+        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        probas = F.softmax(logits, dim=1)
+        return probas, hidden # attn_weights
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
@@ -181,31 +181,31 @@ class AttnDecoderLSTM(nn.Module):
     
 class AttnDecoderGRU(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, max_length:int, n_layers:int=2, dropout_p:float=0.5):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
         super(AttnDecoderGRU, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
-        self.dropout_p = dropout_p
+        self.dropout = dropout
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = GeneralAttention(hidden_size, max_length)
-        self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout_p)
-        self.linear = nn.Linear(hidden_size, out_size)
+        self.attention = MultiplicativeAttention(hidden_size)
+        self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
+        self.linear = nn.Linear(hidden_size * 2, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
         batch_size = x_batch.size(0)
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, attn_weights = self.attention(embedded, hidden, encoder_hiddens)
+        out, hidden = self.gru(embedded, hidden)
         out = F.relu(out)
-        out, hidden = self.gru(out, hidden)
-        log_probas = F.log_softmax(self.linear(out.squeeze(0)), dim=1) # transform 3D tensor into 2D matrix for linear layer
-        return log_probas, hidden, attn_weights
+        context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        probas = F.softmax(logits, dim=1)
+        return probas, hidden  # attn_weights (important only for visualisation)
     
     def init_hidden(self, batch_size:int=1):
         hidden_state = torch.zeros(self.n_layers, batch_size, self.emb_size, device=device)
