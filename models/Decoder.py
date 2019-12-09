@@ -157,7 +157,7 @@ class AttnDecoderLSTM(nn.Module):
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         self.attention = MultiplicativeAttention(hidden_size)
-        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=False, dropout=dropout)
+        self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):

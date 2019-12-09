@@ -1,4 +1,4 @@
-__all__ = ['GeneralAttention']
+__all__ = ['GeneralAttention', 'MultiplicativeAttention']
 
 import torch
 import torch.nn as nn
