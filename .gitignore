@@ -82,3 +82,5 @@ Paper/Plots/mini_batch_training - example translation_files/thmsInNb4.js.downloa
 Paper/Plots/mini_batch_training - example translation_files/toc2.js.download
 Paper/Plots/mini_batch_training - example translation_files/typo.js.download
 results/experiment_1b_mini_batch.json
+.ipynb_checkpoints/plotting-checkpoint.ipynb
+plotting.ipynb
