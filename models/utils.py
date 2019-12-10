@@ -66,7 +66,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
                         
-            # initialise as many hidden states as there are sequences in the mini-batch
+            # initialise as many hidden states as there are sequences in the mini-batch (32 in our case)
             encoder_hidden = encoder.init_hidden(batch_size)
 
             target_length = actions.size(1) # max_target_length
