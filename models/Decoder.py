@@ -17,6 +17,8 @@ else:
     device = torch.device("cpu")
     print("GPU not available, CPU used")
 
+torch.manual_seed(42)
+
 class DecoderRNN(nn.Module):
     
     def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5):

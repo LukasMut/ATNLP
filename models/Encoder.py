@@ -14,6 +14,8 @@ if is_cuda:
 else:
     device = torch.device("cpu")
     print("GPU not available, CPU used")
+    
+torch.manual_seed(42)
 
 # Vanilla RNN implementation
 class EncoderRNN(nn.Module):

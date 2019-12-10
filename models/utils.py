@@ -18,6 +18,7 @@ from utils import pairs2idx, s2i
 # set fixed random seed to reproduce results
 np.random.seed(42)
 random.seed(42)
+torch.manual_seed(42)
 
 device = ("cuda" if torch.cuda.is_available() else "cpu")
     

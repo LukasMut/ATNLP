@@ -27,7 +27,8 @@ class GeneralAttention(nn.Module):
         out = self.attn_out(out).unsqueeze(0)
         return out, attn_weights
     
-    
+
+# TODO: implement scaled version of multiplicative attention (see "Attention is all you need" for further details)
 class MultiplicativeAttention(nn.Module):
     """
     Multiplicative attention version as introduced in Luong et al. (2015) (https://arxiv.org/pdf/1508.04025.pdf)
