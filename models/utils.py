@@ -15,7 +15,7 @@ from models.Encoder import *
 from models.Decoder import *
 from utils import pairs2idx, s2i
 
-# set fixed random seed to reproduce results
+# set fixed random seeds to reproduce results
 np.random.seed(42)
 random.seed(42)
 torch.manual_seed(42)

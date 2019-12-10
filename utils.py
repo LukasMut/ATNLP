@@ -11,6 +11,7 @@ from torch.autograd import Variable
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 
 device = ("cuda" if torch.cuda.is_available() else "cpu")
+torch.manual_seed(42)
 
 def load_dataset(exp:str, split:str, subdir:str='./data'):
     """load dataset into memory
