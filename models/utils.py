@@ -291,8 +291,8 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     
     if detailed_results:
-        results_cmds = {cmd_length: value['match'] / value['frequency'] for cmd_length, value in results_cmds.items()}
-        results_acts = {act_length: value['match'] / value['frequency'] for act_length, value in results_acts.items()}
+        results_cmds = {cmd_length: (value['match'] / value['frequency']) * 100 for cmd_length, value in results_cmds.items()}
+        results_acts = {act_length: (value['match'] / value['frequency']) * 100 for act_length, value in results_acts.items()}
         return test_acc, results_cmds, results_acts
     else:
         return test_acc

@@ -116,7 +116,8 @@ class DecoderGRU(nn.Module):
     
 class AttnDecoderRNN(nn.Module):
     
-    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
+    def __init__(self, emb_size:int,  hidden_size:int, out_size:int, n_layers:int, dropout:float,
+                 attention_version:str, max_length:bool=None):
         super(AttnDecoderRNN, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -126,7 +127,15 @@ class AttnDecoderRNN(nn.Module):
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = MultiplicativeAttention(hidden_size)
+        
+        if attention_version == 'general':
+            isinstance(max_length, int), 'General attention requires maximum command sequence length'
+            self.attention = GeneralAttention(hidden_size, max_length)
+        elif attention_version == 'multiplicative':
+            self.attention = MultiplicativeAttention(hidden_size)
+        else:
+            raise ValueError("Attention version must be one of ['general', 'multiplicative']")
+            
         self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
@@ -148,17 +157,26 @@ class AttnDecoderRNN(nn.Module):
         
 class AttnDecoderLSTM(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int, dropout:float,
+                 attention_version:str, max_length:bool=None):
         super(AttnDecoderLSTM, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
-        self.max_length = max_length # max target sequence length
+        self.max_length = max_length # max source sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = MultiplicativeAttention(hidden_size)
+        
+        if attention_version == 'general':
+            isinstance(max_length, int), 'General attention requires maximum command sequence length'
+            self.attention = GeneralAttention(hidden_size, max_length)
+        elif attention_version == 'multiplicative':
+            self.attention = MultiplicativeAttention(hidden_size)
+        else:
+            raise ValueError("Attention version must be one of ['general', 'multiplicative']")
+            
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size, out_size)
         
@@ -183,7 +201,8 @@ class AttnDecoderLSTM(nn.Module):
     
 class AttnDecoderGRU(nn.Module):
     
-    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int=2, dropout:float=0.5, max_length:bool=None):
+    def __init__(self, emb_size:int, hidden_size:int, out_size:int, n_layers:int, dropout:float, 
+                 attention_version:str, max_length:bool=None):
         super(AttnDecoderGRU, self).__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -193,7 +212,15 @@ class AttnDecoderGRU(nn.Module):
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
-        self.attention = MultiplicativeAttention(hidden_size)
+        
+        if attention_version == 'general':
+            isinstance(max_length, int), 'General attention requires maximum command sequence length'
+            self.attention = GeneralAttention(hidden_size, max_length)
+        elif attention_version == 'multiplicative':
+            self.attention = MultiplicativeAttention(hidden_size)
+        else:
+            raise ValueError("Attention version must be one of ['general', 'multiplicative']")
+            
         self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_size * 2, out_size)
         
