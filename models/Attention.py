@@ -41,6 +41,6 @@ class MultiplicativeAttention(nn.Module):
     def forward(self, hidden, encoder_outputs):
         key = self.attn(encoder_outputs)
         attn_scores = torch.sum(hidden.unsqueeze(1) * key, dim=2) # broadcasting, sum along the sequence [32, 10]
-        attn_weights = F.softmax(attn_scores, dim=1).unsqueeze(1)
+        attn_weights = F.softmax(attn_scores, dim = 1).unsqueeze(1)
         context = attn_weights.bmm(encoder_outputs) # [32, 1, 10] x [32, 10, 500]
-        return context, attn_weigths
+        return context, attn_weights

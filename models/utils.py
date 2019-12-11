@@ -5,6 +5,7 @@ import torch.nn as nn
 import random
 import torch
 
+from collections import defaultdict
 from itertools import islice
 from sklearn.utils import shuffle
 from tqdm import tqdm, trange
@@ -91,7 +92,10 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             if use_teacher_forcing:
                 # Teacher forcing: feed target as the next input
                 for i in range(1, target_length):
-                    decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                    if hasattr(decoder, 'attention'):
+                        decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden, encoder_outputs)
+                    else:
+                        decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     _, topi = decoder_out.topk(1)
                     pred = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
                     
@@ -112,7 +116,10 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             else:
                 # Autoregressive RNN: feed previous prediction as the next input
                 for i in range(1, target_length):
-                    decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                    if hasattr(decoder, 'attention'):
+                        decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden, encoder_outputs)
+                    else:
+                        decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     _, topi = decoder_out.topk(1)
                     decoder_input = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
                     pred = decoder_input
@@ -189,6 +196,9 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int,
          detailed_analysis:bool=True, detailed_results:bool=False):
     
+    # <PAD> token corresponds to index 0
+    PAD_token = 0
+    
     # set models into evaluation mode
     encoder.eval()
     decoder.eval()
@@ -238,7 +248,10 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
             # Autoregressive RNN: feed previous prediction as the next input
             for i in range(1, target_length):
-                decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
+                if hasattr(decoder, 'attention'):
+                    decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden, encoder_outputs)
+                else:
+                    decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                 _, topi = decoder_out.topk(1)
                 decoder_input = torch.LongTensor([topi[i][0] for i in range(batch_size)]).to(device)
                 pred = decoder_input
@@ -247,7 +260,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
                 pred_sent += i2w_target[pred[0].item()] + " "
 
             # skip <SOS> token and ignore <PAD> tokens
-            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != 0]).strip()
+            true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != PAD_token]).strip()
 
             # strip off any leading or trailing white spaces
             pred_sent = pred_sent.strip().split()
@@ -318,6 +331,8 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
 
 # detailed exact match accuracy for command and action sequences for experiment 2
 
+# detailed exact match accuracy for command and action sequences for experiment 2
+
 def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
                                   results_cmds:dict, results_acts:dict):
     EOS_token = 2
@@ -325,10 +340,10 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
     for pred_act, true_act, cmd_length in zip(pred_actions, true_actions, input_lengths):
         
         # copy tensor to CPU before converting it into a NumPy array
-        pred_act = pred.cpu().numpy().tolist()
-        true_act = true.cpu().numpy().tolist()
+        pred_act = pred_act.cpu().numpy().tolist()
+        true_act = true_act.cpu().numpy().tolist()
         
-        true_act = true_act[:true.index(EOS_token)+1]
+        true_act = true_act[:true_act.index(EOS_token)+1]
         
         # count frequency of command and action lengths respectively
         if 'frequency' not in results_cmds[cmd_length]:
@@ -343,7 +358,7 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
             
         # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
         try:
-            pred_act = pred_act[:pred.index(EOS_token)+1]
+            pred_act = pred_act[:pred_act.index(EOS_token)+1]
             
             match = 1 if np.array_equal(pred_act, true_act) else 0 # exact match accuracy
             
@@ -369,7 +384,7 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
             
     return results_cmds, results_acts
 
-# masked negative log-likelihood loss (necessary for mini-batch training)
+# masked negative log-likelihood loss (necessary for mini-batch training --> mask the loss for <PAD> tokens)
 
 def maskNLLLoss(pred, target, mask):
     nTotal = mask.sum()
