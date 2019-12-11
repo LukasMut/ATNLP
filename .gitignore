@@ -85,3 +85,4 @@ results/experiment_1b_mini_batch.json
 .ipynb_checkpoints/plotting-checkpoint.ipynb
 plotting.ipynb
 .ipynb_checkpoints/experiment_2-checkpoint.ipynb
+results/experiment_1a_GRU_grid_search.json
