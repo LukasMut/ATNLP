@@ -196,15 +196,15 @@ class AttnDecoderLSTM(nn.Module):
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
         
-        if self.attention_version == 'multiplicative':
-            out, hidden = self.rnn(embedded, hidden)
+        if self.attention_version == 'multiplicative':            
+            out, hidden = self.lstm(embedded, hidden)
             out = F.relu(out)
-            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            context, attn_weights = self.attention(hidden[0][-1], encoder_hiddens)
             logits = self.linear(torch.cat((out, context), 2).squeeze(1))
         elif self.attention_version == 'general':
-            context, attn_weights = self.attention(hidden[0], encoder_hiddens)
+            context, attn_weights = self.attention(hidden[0][0], encoder_hiddens)
             out = F.relu(context)
-            out, hidden = self.rnn(out, hidden)
+            out, hidden = self.lstm(out, hidden)
             logits = self.linear(out.squeeze(1))
             
         probas = F.softmax(logits, dim=1)
@@ -249,15 +249,15 @@ class AttnDecoderGRU(nn.Module):
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
         
-        if self.attention_version == 'multiplicative':
-            out, hidden = self.rnn(embedded, hidden)
+        if self.attention_version == 'multiplicative':            
+            out, hidden = self.gru(embedded, hidden)
             out = F.relu(out)
             context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
             logits = self.linear(torch.cat((out, context), 2).squeeze(1))
         elif self.attention_version == 'general':
             context, attn_weights = self.attention(hidden[0], encoder_hiddens)
             out = F.relu(context)
-            out, hidden = self.rnn(out, hidden)
+            out, hidden = self.gru(out, hidden)
             logits = self.linear(out.squeeze(1))
         
         probas = F.softmax(logits, dim=1)
