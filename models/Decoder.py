@@ -132,13 +132,14 @@ class AttnDecoderRNN(nn.Module):
         if attention_version == 'general':
             isinstance(max_length, int), 'General attention requires maximum command sequence length'
             self.attention = GeneralAttention(hidden_size, max_length)
+            self.linear = nn.Linear(hidden_size, out_size)
         elif attention_version == 'multiplicative':
             self.attention = MultiplicativeAttention(hidden_size)
+            self.linear = nn.Linear(hidden_size * 2, out_size)
         else:
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
             
         self.rnn = nn.RNN(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
-        self.linear = nn.Linear(hidden_size, out_size)
         
     def forward(self, x_batch, hidden, encoder_hiddens):
         batch_size = x_batch.size(0)
@@ -182,13 +183,15 @@ class AttnDecoderLSTM(nn.Module):
         if attention_version == 'general':
             isinstance(max_length, int), 'General attention requires maximum command sequence length'
             self.attention = GeneralAttention(hidden_size, max_length)
+            self.linear = nn.Linear(hidden_size, out_size)
         elif attention_version == 'multiplicative':
             self.attention = MultiplicativeAttention(hidden_size)
+            self.linear = nn.Linear(hidden_size * 2, out_size)
         else:
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
             
         self.lstm = nn.LSTM(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
-        self.linear = nn.Linear(hidden_size, out_size)
+        
         
     def forward(self, x_batch, hidden, encoder_hiddens):
         batch_size = x_batch.size(0)
@@ -235,14 +238,15 @@ class AttnDecoderGRU(nn.Module):
         if attention_version == 'general':
             isinstance(max_length, int), 'General attention requires maximum command sequence length'
             self.attention = GeneralAttention(hidden_size, max_length)
+            self.linear = nn.Linear(hidden_size, out_size)
         elif attention_version == 'multiplicative':
             self.attention = MultiplicativeAttention(hidden_size)
+            self.linear = nn.Linear(hidden_size * 2, out_size)
         else:
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
             
         self.gru = nn.GRU(emb_size, hidden_size, n_layers, batch_first=True, dropout=dropout)
-        self.linear = nn.Linear(hidden_size * 2, out_size)
-        
+       
     def forward(self, x_batch, hidden, encoder_hiddens):
         batch_size = x_batch.size(0)
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)

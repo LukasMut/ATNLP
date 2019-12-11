@@ -331,8 +331,6 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
 
 # detailed exact match accuracy for command and action sequences for experiment 2
 
-# detailed exact match accuracy for command and action sequences for experiment 2
-
 def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
                                   results_cmds:dict, results_acts:dict):
     EOS_token = 2
