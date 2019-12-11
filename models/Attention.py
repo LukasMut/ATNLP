@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+torch.manual_seed(42)
+
 class GeneralAttention(nn.Module):
     """
     General attention version as introduced in Bahdanau et al. (2015) (https://arxiv.org/abs/1409.0473)
