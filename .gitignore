@@ -86,3 +86,5 @@ results/experiment_1b_mini_batch.json
 plotting.ipynb
 .ipynb_checkpoints/experiment_2-checkpoint.ipynb
 results/experiment_1a_GRU_grid_search.json
+.ipynb_checkpoints/inspecting_model_behaviour-checkpoint.ipynb
+inspecting_model_behaviour.ipynb
