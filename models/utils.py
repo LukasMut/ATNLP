@@ -186,7 +186,8 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 
 ### Testing ###
 
-def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int, detailed_analysis:bool=True):
+def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int,
+         detailed_analysis:bool=True, detailed_results:bool=False):
     
     # set models into evaluation mode
     encoder.eval()
@@ -198,7 +199,11 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     n_lang_pairs = len(test_dl) * batch_size
     
     # NOTE: NO TEACHER FORCING DURING TESTING !!!
-                    
+    
+    # store detailed results for experiment 2
+    results_cmds = defaultdict(dict)
+    results_acts = defaultdict(dict) 
+    
     test_acc = 0
     
     # no gradient computation for evaluation mode
@@ -249,7 +254,11 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
             pred_sent = ' '.join(pred_sent[:true_sent.split().index('<EOS>')+1])
             
             # update accuracy
-            test_acc = exact_match_accuracy(preds, actions, test_acc)
+            if detailed_results:
+                results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
+                test_acc = exact_match_accuracy(preds, actions, test_acc)
+            else:
+                test_acc = exact_match_accuracy(preds, actions, test_acc)
 
             ### Inspect translation behaviour ###
             if detailed_analysis:
@@ -264,10 +273,16 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
                     print("True sent length: {}".format(len(true_sent.split())))
                     print("Pred sent length: {}".format(len(pred_sent.split())))
                     print()
-                
+                    
     test_acc /= (n_lang_pairs - n_lang_pairs_not_tested)
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
-    return test_acc
+    
+    if detailed_results:
+        results_cmds = {cmd_length: value['match'] / value['frequency'] for cmd_length, value in results_cmds.items()}
+        results_acts = {act_length: value['match'] / value['frequency'] for act_length, value in results_acts.items()}
+        return test_acc, results_cmds, results_acts
+    else:
+        return test_acc
 
 ### Helper functions for training and testing ###
 
@@ -300,6 +315,59 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
         except ValueError:
             continue
     return acc
+
+# detailed exact match accuracy for command and action sequences for experiment 2
+
+def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
+                                  results_cmds:dict, results_acts:dict):
+    EOS_token = 2
+    input_lengths = list(map(lambda cmd_length: cmd_length.cpu().item(), input_lengths))
+    for pred_act, true_act, cmd_length in zip(pred_actions, true_actions, input_lengths):
+        
+        # copy tensor to CPU before converting it into a NumPy array
+        pred_act = pred.cpu().numpy().tolist()
+        true_act = true.cpu().numpy().tolist()
+        
+        true_act = true_act[:true.index(EOS_token)+1]
+        
+        # count frequency of command and action lengths respectively
+        if 'frequency' not in results_cmds[cmd_length]:
+            results_cmds[cmd_length]['frequency'] = 1
+        else:
+            results_cmds[cmd_length]['frequency'] += 1
+
+        if 'frequency' not in results_acts[len(true_act)]:
+            results_acts[len(true_act)]['frequency'] = 1
+        else:
+            results_acts[len(true_act)]['frequency'] += 1
+            
+        # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
+        try:
+            pred_act = pred_act[:pred.index(EOS_token)+1]
+            
+            match = 1 if np.array_equal(pred_act, true_act) else 0 # exact match accuracy
+            
+            if 'match' not in results_cmds[cmd_length]:
+                results_cmds[cmd_length]['match'] = match
+            else:
+                results_cmds[cmd_length]['match'] += match
+                
+            if 'match' not in results_acts[len(true_act)]:
+                results_acts[len(true_act)]['match'] = match
+            else:
+                results_acts[len(true_act)]['match'] += match
+        
+        except ValueError:
+            if 'match' not in results_cmds[cmd_length]:
+                results_cmds[cmd_length]['match'] = 0
+            else:
+                pass
+            if 'match' not in results_acts[len(true_act)]:
+                results_acts[len(true_act)]['match'] = 0
+            else:
+                pass
+            
+    return results_cmds, results_acts
 
 # masked negative log-likelihood loss (necessary for mini-batch training)
 
