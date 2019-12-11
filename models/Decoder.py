@@ -124,7 +124,8 @@ class AttnDecoderRNN(nn.Module):
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
-        self.max_length = max_length # max target sequence length
+        self.attention_version = attention_version
+        self.max_length = max_length # max source sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
         
@@ -144,10 +145,18 @@ class AttnDecoderRNN(nn.Module):
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, hidden = self.rnn(embedded, hidden)
-        out = F.relu(out)
-        context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
-        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        
+        if self.attention_version == 'multiplicative':
+            out, hidden = self.rnn(embedded, hidden)
+            out = F.relu(out)
+            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        elif self.attention_version == 'general':
+            context, attn_weights = self.attention(hidden[0], encoder_hiddens)
+            out = F.relu(context)
+            out, hidden = self.rnn(out, hidden)
+            logits = self.linear(out.squeeze(1))
+            
         probas = F.softmax(logits, dim=1)
         return probas, hidden
     
@@ -165,6 +174,7 @@ class AttnDecoderLSTM(nn.Module):
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
+        self.attention_version = attention_version
         self.max_length = max_length # max source sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
@@ -185,10 +195,18 @@ class AttnDecoderLSTM(nn.Module):
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, hidden = self.lstm(embedded, hidden)
-        out = F.relu(out)
-        context, attn_weights = self.attention(hidden[0][-1], encoder_hiddens)
-        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        
+        if self.attention_version == 'multiplicative':
+            out, hidden = self.rnn(embedded, hidden)
+            out = F.relu(out)
+            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        elif self.attention_version == 'general':
+            context, attn_weights = self.attention(hidden[0], encoder_hiddens)
+            out = F.relu(context)
+            out, hidden = self.rnn(out, hidden)
+            logits = self.linear(out.squeeze(1))
+            
         probas = F.softmax(logits, dim=1)
         return probas, hidden # attn_weights
     
@@ -209,6 +227,7 @@ class AttnDecoderGRU(nn.Module):
         self.out_size = out_size # |V|
         self.n_layers = n_layers
         self.dropout = dropout
+        self.attention_version = attention_version
         self.max_length = max_length # max target sequence length
         
         self.embedding = nn.Embedding(out_size, emb_size, padding_idx=0)
@@ -229,10 +248,18 @@ class AttnDecoderGRU(nn.Module):
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
         embedded = F.relu(embedded)
-        out, hidden = self.gru(embedded, hidden)
-        out = F.relu(out)
-        context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
-        logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        
+        if self.attention_version == 'multiplicative':
+            out, hidden = self.rnn(embedded, hidden)
+            out = F.relu(out)
+            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            logits = self.linear(torch.cat((out, context), 2).squeeze(1))
+        elif self.attention_version == 'general':
+            context, attn_weights = self.attention(hidden[0], encoder_hiddens)
+            out = F.relu(context)
+            out, hidden = self.rnn(out, hidden)
+            logits = self.linear(out.squeeze(1))
+        
         probas = F.softmax(logits, dim=1)
         return probas, hidden  # attn_weights (important only for visualisation)
     
