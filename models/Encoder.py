@@ -19,10 +19,8 @@ torch.manual_seed(42)
 
 # Vanilla RNN implementation
 class EncoderRNN(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int=2, dropout:float=0.5,
-                 max_source_length:int, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int, dropout:float, max_source_length:int, bidir:bool=False):
         super(EncoderRNN, self).__init__()
-        
         self.in_size = in_size # |V|
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -59,10 +57,8 @@ class EncoderRNN(nn.Module):
     
 # Vanilla LSTM implementation
 class EncoderLSTM(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5, 
-                 max_source_length:int, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int, dropout:float, max_source_length:int, bidir:bool=False):
         super(EncoderLSTM, self).__init__()
-        
         self.in_size = in_size # |V|
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -100,10 +96,8 @@ class EncoderLSTM(nn.Module):
     
 # Vanilla GRU implementation
 class EncoderGRU(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5,
-                 max_source_length:int, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int, dropout:float, max_source_length:int, bidir:bool=False):
         super(EncoderGRU, self).__init__()
-        
         self.in_size = in_size # |V|
         self.emb_size = emb_size
         self.hidden_size = hidden_size

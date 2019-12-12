@@ -79,16 +79,22 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             if encoder.bidir:
                 # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
+                    decoder_hidden = tuple(torch.stack(tuple(torch.add(h, hidden[i-1]) for hidden in encoder_hidden
+                                                             for i, h in enumerate(hidden) if i%2 != 0)))
+                    
                     # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                    decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                    # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
                 else:
-                    #NOTE: this is our version to leverage bidirectional encoder hidden states
-                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) for i, h in enumerate(encoder_hidden) if i%2 != 0))
+                    # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
+                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) 
+                                                       for i, h in enumerate(encoder_hidden) if i%2 != 0))
+                    
+                    # NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
+                    # --> this version only leverages bidirectional outputs but does not make use of bidirectional hidden states
+                    # decoder_hidden = encoder_hidden[:decoder.n_layers] 
             else:
                 decoder_hidden = encoder_hidden
 
-                    #NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
-                    #decoder_hidden = encoder_hidden[:decoder.n_layers] 
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
@@ -245,16 +251,24 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
             if encoder.bidir:
                 # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
+                    print(len(encoder_hidden))
+                    print(encoder_hidden[0].shape)
+                    decoder_hidden = tuple(torch.stack(tuple(torch.add(h, hidden[i-1]) for hidden in encoder_hidden
+                                                             for i, h in enumerate(hidden) if i%2 != 0)))
+                    
                     # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                    decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                    # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
                 else:
-                    #NOTE: this is our version to leverage bidirectional encoder hidden states
-                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) for i, h in enumerate(encoder_hidden) if i%2 != 0))
+                    # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
+                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) 
+                                                       for i, h in enumerate(encoder_hidden) if i%2 != 0))
+                    
+                    # NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
+                    # --> this version only leverages bidirectional outputs but does not make use of bidirectional hidden states
+                    # decoder_hidden = encoder_hidden[:decoder.n_layers] 
             else:
                 decoder_hidden = encoder_hidden
 
-                    #NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
-                    #decoder_hidden = encoder_hidden[:decoder.n_layers] 
 
             pred_sent = ""            
             preds = torch.zeros((batch_size, target_length)).to(device)
