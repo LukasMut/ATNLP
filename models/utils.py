@@ -79,10 +79,13 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             if encoder.bidir:
                 # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
-                    decoder_hidden = tuple(torch.stack(tuple(torch.add(h, hidden[i-1]) for hidden in encoder_hidden
-                                                             for i, h in enumerate(hidden) if i%2 != 0)))
-                    
                     # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                    assert len(encoder_hidden) == 2, 'encoder hidden must consist of both hidden and cell states'
+                    encoder_h = torch.stack(tuple(torch.add(h, encoder_hidden[0][i-1]) 
+                                                  for i, h in enumerate(encoder_hidden[0]) if i%2 != 0))
+                    encoder_c = torch.stack(tuple(torch.add(h, encoder_hidden[1][i-1]) 
+                                                  for i, h in enumerate(encoder_hidden[1]) if i%2 != 0))
+                    decoder_hidden = (encoder_h, encoder_c)
                     # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
                 else:
                     # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
@@ -94,7 +97,6 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     # decoder_hidden = encoder_hidden[:decoder.n_layers] 
             else:
                 decoder_hidden = encoder_hidden
-
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
@@ -144,10 +146,9 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                         loss += mask_loss
                         losses_per_batch.append(mask_loss.item() * n_total)
                     n_totals += n_total
-
-                         
                     
                     pred_sent += i2w_target[pred[0].item()] + " "
+                    
             # skip <SOS> token and ignore <PAD> tokens
             true_sent = ' '.join([i2w_target[act.item()] for act in islice(actions[0], 1, None) if act.item() != PAD_token]).strip()
             
@@ -178,7 +179,6 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     print("Pred sent length: {}".format(len(pred_sent.split())))
                     print()
                 
-
             # clip gradients after each batch (inplace)
             _ = nn.utils.clip_grad_norm_(encoder.parameters(), clip)
             _ = nn.utils.clip_grad_norm_(decoder.parameters(), clip)
@@ -247,16 +247,17 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
             encoder_outputs, encoder_hidden = encoder(commands, input_lengths, encoder_hidden)
 
             decoder_input = actions[:, 0]
-
+            
             if encoder.bidir:
                 # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
-                    print(len(encoder_hidden))
-                    print(encoder_hidden[0].shape)
-                    decoder_hidden = tuple(torch.stack(tuple(torch.add(h, hidden[i-1]) for hidden in encoder_hidden
-                                                             for i, h in enumerate(hidden) if i%2 != 0)))
-                    
                     # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                    assert len(encoder_hidden) == 2, 'encoder hidden must consist of both hidden and cell states'
+                    encoder_h = torch.stack(tuple(torch.add(h, encoder_hidden[0][i-1]) 
+                                                  for i, h in enumerate(encoder_hidden[0]) if i%2 != 0))
+                    encoder_c = torch.stack(tuple(torch.add(h, encoder_hidden[1][i-1]) 
+                                                  for i, h in enumerate(encoder_hidden[1]) if i%2 != 0))
+                    decoder_hidden = (encoder_h, encoder_c)
                     # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
                 else:
                     # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
