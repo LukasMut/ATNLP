@@ -142,7 +142,7 @@ class AttnDecoderRNN(nn.Module):
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
 
         
-    def forward(self, x_batch, hidden, encoder_hiddens):
+    def forward(self, x_batch, hidden, encoder_outputs):
         batch_size = x_batch.size(0)
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
@@ -151,10 +151,10 @@ class AttnDecoderRNN(nn.Module):
         if self.attention_version == 'multiplicative':
             out, hidden = self.rnn(embedded, hidden)
             out = F.relu(out)
-            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            context, attn_weights = self.attention(hidden[-1], encoder_outputs)
             logits = self.linear(torch.cat((out, context), 2).squeeze(1))
         elif self.attention_version == 'general':
-            context, attn_weights = self.attention(embedded, hidden[0], encoder_hiddens)
+            context, attn_weights = self.attention(embedded, hidden[0], encoder_outputs)
             out = F.relu(context)
             out, hidden = self.rnn(out, hidden)
             logits = self.linear(out.squeeze(1))
@@ -194,7 +194,7 @@ class AttnDecoderLSTM(nn.Module):
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
 
         
-    def forward(self, x_batch, hidden, encoder_hiddens):
+    def forward(self, x_batch, hidden, encoder_outputs):
         batch_size = x_batch.size(0)
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
@@ -203,10 +203,10 @@ class AttnDecoderLSTM(nn.Module):
         if self.attention_version == 'multiplicative':            
             out, hidden = self.lstm(embedded, hidden)
             out = F.relu(out)
-            context, attn_weights = self.attention(hidden[0][-1], encoder_hiddens)
+            context, attn_weights = self.attention(hidden[0][-1], encoder_outputs)
             logits = self.linear(torch.cat((out, context), 2).squeeze(1))
         elif self.attention_version == 'general':
-            context, attn_weights = self.attention(embedded, hidden[0][0], encoder_hiddens)
+            context, attn_weights = self.attention(embedded, hidden[0][0], encoder_outputs)
             out = F.relu(context)
             out, hidden = self.lstm(out, hidden)
             logits = self.linear(out.squeeze(1))
@@ -249,7 +249,7 @@ class AttnDecoderGRU(nn.Module):
             raise ValueError("Attention version must be one of ['general', 'multiplicative']")
             
        
-    def forward(self, x_batch, hidden, encoder_hiddens):
+    def forward(self, x_batch, hidden, encoder_outputs):
         batch_size = x_batch.size(0)
         # NOTE: first dim represents batch size, second represents sequence length, third dim embedding size (if batch_first=True)
         embedded = self.embedding(x_batch).view(batch_size, 1, -1)
@@ -258,10 +258,10 @@ class AttnDecoderGRU(nn.Module):
         if self.attention_version == 'multiplicative':            
             out, hidden = self.gru(embedded, hidden)
             out = F.relu(out)
-            context, attn_weights = self.attention(hidden[-1], encoder_hiddens)
+            context, attn_weights = self.attention(hidden[-1], encoder_outputs)
             logits = self.linear(torch.cat((out, context), 2).squeeze(1))
         elif self.attention_version == 'general':
-            context, attn_weights = self.attention(embedded, hidden[0], encoder_hiddens)
+            context, attn_weights = self.attention(embedded, hidden[0], encoder_outputs)
             out = F.relu(context)
             out, hidden = self.gru(out, hidden)
             logits = self.linear(out.squeeze(1))

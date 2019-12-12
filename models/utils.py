@@ -76,25 +76,12 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             decoder_input = actions[:, 0]
             
+            # init decoder hidden with encoder's final hidden state
             if encoder.bidir:
-                # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
-                    # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                    assert len(encoder_hidden) == 2, 'encoder hidden must consist of both hidden and cell states'
-                    encoder_h = torch.stack(tuple(torch.add(h, encoder_hidden[0][i-1]) 
-                                                  for i, h in enumerate(encoder_hidden[0]) if i%2 != 0))
-                    encoder_c = torch.stack(tuple(torch.add(h, encoder_hidden[1][i-1]) 
-                                                  for i, h in enumerate(encoder_hidden[1]) if i%2 != 0))
-                    decoder_hidden = (encoder_h, encoder_c)
-                    # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                    decoder_hidden = sum_directions(encoder_hidden, lstm=True)
                 else:
-                    # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
-                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) 
-                                                       for i, h in enumerate(encoder_hidden) if i%2 != 0))
-                    
-                    # NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
-                    # --> this version only leverages bidirectional outputs but does not make use of bidirectional hidden states
-                    # decoder_hidden = encoder_hidden[:decoder.n_layers] 
+                    decoder_hidden = sum_directions(encoder_hidden)
             else:
                 decoder_hidden = encoder_hidden
 
@@ -248,28 +235,14 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
             decoder_input = actions[:, 0]
             
+            # init decoder hidden with encoder's final hidden state
             if encoder.bidir:
-                # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
                 if hasattr(encoder, 'lstm'):
-                    # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                    assert len(encoder_hidden) == 2, 'encoder hidden must consist of both hidden and cell states'
-                    encoder_h = torch.stack(tuple(torch.add(h, encoder_hidden[0][i-1]) 
-                                                  for i, h in enumerate(encoder_hidden[0]) if i%2 != 0))
-                    encoder_c = torch.stack(tuple(torch.add(h, encoder_hidden[1][i-1]) 
-                                                  for i, h in enumerate(encoder_hidden[1]) if i%2 != 0))
-                    decoder_hidden = (encoder_h, encoder_c)
-                    # decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                    decoder_hidden = sum_directions(encoder_hidden, lstm=True)
                 else:
-                    # NOTE: this is our version to leverage bidirectional encoder hidden states (correct)
-                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) 
-                                                       for i, h in enumerate(encoder_hidden) if i%2 != 0))
-                    
-                    # NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
-                    # --> this version only leverages bidirectional outputs but does not make use of bidirectional hidden states
-                    # decoder_hidden = encoder_hidden[:decoder.n_layers] 
+                    decoder_hidden = sum_directions(encoder_hidden)
             else:
                 decoder_hidden = encoder_hidden
-
 
             pred_sent = ""            
             preds = torch.zeros((batch_size, target_length)).to(device)
@@ -328,8 +301,21 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
 ### Helper functions for training and testing ###
 
+# this functions sums forward- and backward hidden states to leverage the full potential of bidirectional encoders
+def sum_directions(encoder_hidden:torch.Tensor, lstm:bool=False):
+    if lstm:
+        # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+        assert len(encoder_hidden) == 2, "LSTM's encoder hidden must consist of both hidden and cell states"
+        hidden_states, cell_states = encoder_hidden
+        encoder_h = torch.stack(tuple(torch.add(h, hidden_states[i-1]) 
+                                      for i, h in enumerate(hidden_states) if i%2 != 0))
+        encoder_c = torch.stack(tuple(torch.add(h, cell_states[i-1]) 
+                                      for i, h in enumerate(cell_states) if i%2 != 0))
+        return (encoder_h, encoder_c)
+    else:
+        return torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) for i, h in enumerate(encoder_hidden) if i%2 != 0))
+        
 # batch sorting function (necessary for mini-batch training)
-
 def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True, pad_token:int=0):
     indices, commands = zip(*sorted(enumerate(commands.cpu().numpy()), key=lambda seq: len(seq[1][seq[1] != pad_token]), reverse=True))
     indices = np.array(list(indices))
@@ -341,7 +327,6 @@ def sort_batch(commands, input_lengths, actions, masks=None, training:bool=True,
         return commands, input_lengths[indices], actions[indices]
 
 # exact match accuracy for mini-batch MT
-
 def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, acc:int):
     EOS_token = 2
     isinstance(acc, int)
@@ -359,7 +344,6 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
     return acc
 
 # detailed exact match accuracy for command and action sequences for experiment 2
-
 def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
                                   results_cmds:dict, results_acts:dict):
     EOS_token = 2
@@ -412,7 +396,6 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
     return results_cmds, results_acts
 
 # masked negative log-likelihood loss (necessary for mini-batch training --> mask the loss for <PAD> tokens)
-
 def maskNLLLoss(pred, target, mask):
     nTotal = mask.sum()
     crossEntropy = -torch.log(torch.gather(pred, 1, target.view(-1, 1)).squeeze(1))
@@ -420,8 +403,7 @@ def maskNLLLoss(pred, target, mask):
     loss = loss.to(device)
     return loss, nTotal.item()
 
-# sampling function for experiment 1b #
-
+# sampling function for experiment 1b 
 def sample_distinct_pairs(cmd_act_pairs:list, ratio:float):
     # randomly shuffle the data set prior to picking distinct examples from train set
     np.random.shuffle(cmd_act_pairs)
