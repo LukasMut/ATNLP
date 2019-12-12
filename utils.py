@@ -88,6 +88,7 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
         cmd_sequences = [s2i(cmd, w2i_cmd, decode=False) for cmd in cmds]
         act_sequences = [s2i(act, w2i_act, decode=True) for act in acts]
         maxlen_cmds = max_length(cmd_sequences)
+        print(maxlen_cmds)
         maxlen_acts = max_length(act_sequences)
         cmd_sequences = zero_padding(cmd_sequences, maxlen_cmds, pad_token)
         act_sequences = zero_padding(act_sequences, maxlen_acts, pad_token)

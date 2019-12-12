@@ -76,12 +76,19 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             decoder_input = actions[:, 0]
             
-            # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
-            if hasattr(encoder, 'lstm'):
-                # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+            if encoder.bidir:
+                # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
+                if hasattr(encoder, 'lstm'):
+                    # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                    decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                else:
+                    #NOTE: this is our version to leverage bidirectional encoder hidden states
+                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) for i, h in enumerate(encoder_hidden) if i%2 != 0))
             else:
-                decoder_hidden = encoder_hidden[:decoder.n_layers]
+                decoder_hidden = encoder_hidden
+
+                    #NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
+                    #decoder_hidden = encoder_hidden[:decoder.n_layers] 
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
@@ -235,12 +242,19 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
             decoder_input = actions[:, 0]
 
-            # init decoder hidden with encoder's final hidden state (necessary for bidirectional encoders)
-            if hasattr(encoder, 'lstm'):
-                # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
-                decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+            if encoder.bidir:
+                # init decoder hidden with encoder's final hidden state (only necessary for bidirectional encoders)
+                if hasattr(encoder, 'lstm'):
+                    # NOTE: this step is necessary since LSTMs contrary to RNNs and GRUs have cell states
+                    decoder_hidden = tuple(hidden[:decoder.n_layers] for hidden in encoder_hidden)
+                else:
+                    #NOTE: this is our version to leverage bidirectional encoder hidden states
+                    decoder_hidden = torch.stack(tuple(torch.add(h, encoder_hidden[i-1]) for i, h in enumerate(encoder_hidden) if i%2 != 0))
             else:
-                decoder_hidden = encoder_hidden[:decoder.n_layers]
+                decoder_hidden = encoder_hidden
+
+                    #NOTE: line below is old version (found in PyTorch tutorial) to exploit bidirectional encoder hidden states
+                    #decoder_hidden = encoder_hidden[:decoder.n_layers] 
 
             pred_sent = ""            
             preds = torch.zeros((batch_size, target_length)).to(device)
@@ -291,8 +305,8 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     
     if detailed_results:
-        results_cmds = {cmd_length: (value['match'] / value['frequency']) * 100 for cmd_length, value in results_cmds.items()}
-        results_acts = {act_length: (value['match'] / value['frequency']) * 100 for act_length, value in results_acts.items()}
+        results_cmds = {cmd_length: (values['match'] / values['freq']) * 100 for cmd_length, values in results_cmds.items()}
+        results_acts = {act_length: (values['match'] / values['freq']) * 100 for act_length, values in results_acts.items()}
         return test_acc, results_cmds, results_acts
     else:
         return test_acc
@@ -343,16 +357,16 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
         
         true_act = true_act[:true_act.index(EOS_token)+1]
         
-        # count frequency of command and action lengths respectively
-        if 'frequency' not in results_cmds[cmd_length]:
-            results_cmds[cmd_length]['frequency'] = 1
+        # count frequency of different command and action sequence lengths respectively
+        if 'freq' not in results_cmds[cmd_length]:
+            results_cmds[cmd_length]['freq'] = 1
         else:
-            results_cmds[cmd_length]['frequency'] += 1
+            results_cmds[cmd_length]['freq'] += 1
 
-        if 'frequency' not in results_acts[len(true_act)]:
-            results_acts[len(true_act)]['frequency'] = 1
+        if 'freq' not in results_acts[len(true_act)]:
+            results_acts[len(true_act)]['freq'] = 1
         else:
-            results_acts[len(true_act)]['frequency'] += 1
+            results_acts[len(true_act)]['freq'] += 1
             
         # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
         try:

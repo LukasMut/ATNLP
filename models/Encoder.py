@@ -19,7 +19,8 @@ torch.manual_seed(42)
 
 # Vanilla RNN implementation
 class EncoderRNN(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int=2, dropout:float=0.5, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int, n_layers:int=2, dropout:float=0.5,
+                 max_source_length:int, bidir:bool=False):
         super(EncoderRNN, self).__init__()
         
         self.in_size = in_size # |V|
@@ -27,6 +28,7 @@ class EncoderRNN(nn.Module):
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.dropout = dropout
+        self.max_source_length = max_source_length
         self.bidir = bidir
         
         #TODO: figure out whether "padding_idx" is necessary
@@ -42,10 +44,10 @@ class EncoderRNN(nn.Module):
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.rnn(packed, hidden)
-        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True, total_length=self.max_source_length)
         # if bidirectional, sum outputs of LSTM
         if self.bidir:
-            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
+            out = out[:, :, :self.hidden_size] + out[:, :, self.hidden_size:]
         return out, hidden
 
     def init_hidden(self, batch_size:int=1):
@@ -57,7 +59,8 @@ class EncoderRNN(nn.Module):
     
 # Vanilla LSTM implementation
 class EncoderLSTM(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5, 
+                 max_source_length:int, bidir:bool=False):
         super(EncoderLSTM, self).__init__()
         
         self.in_size = in_size # |V|
@@ -65,6 +68,7 @@ class EncoderLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.dropout = dropout
+        self.max_source_length = max_source_length
         self.bidir = bidir
         
         #TODO: figure out whether "padding_idx" is necessary
@@ -80,10 +84,10 @@ class EncoderLSTM(nn.Module):
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.lstm(packed, hidden)
-        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True, total_length=self.max_source_length)
         # if bidirectional, sum outputs of LSTM
         if self.bidir:
-            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
+            out = out[:, :, :self.hidden_size] + out[:, :, self.hidden_size:]
         return out, hidden
     
     def init_hidden(self, batch_size:int=1):
@@ -96,7 +100,8 @@ class EncoderLSTM(nn.Module):
     
 # Vanilla GRU implementation
 class EncoderGRU(nn.Module):
-    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5, bidir:bool=False):
+    def __init__(self, in_size:int, emb_size:int, hidden_size:int=200, n_layers:int=2, dropout:float=0.5,
+                 max_source_length:int, bidir:bool=False):
         super(EncoderGRU, self).__init__()
         
         self.in_size = in_size # |V|
@@ -104,6 +109,7 @@ class EncoderGRU(nn.Module):
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.dropout = dropout
+        self.max_source_length = max_source_length
         self.bidir = bidir
         
         #TODO: figure out whether "padding_idx" is necessary
@@ -119,10 +125,10 @@ class EncoderGRU(nn.Module):
         x_lengths = x_lengths.detach().cpu().numpy()
         packed = nn.utils.rnn.pack_padded_sequence(embedded, x_lengths, batch_first=True)
         out, hidden = self.gru(packed, hidden)
-        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
+        out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True, total_length=self.max_source_length)
         # if bidirectional, sum outputs of LSTM
         if self.bidir:
-            out = out[:, :, :self.hidden_size] + out[:, : ,self.hidden_size:]
+            out = out[:, :, :self.hidden_size] + out[:, :, self.hidden_size:]
         return out, hidden
     
     def init_hidden(self, batch_size:int):
