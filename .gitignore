@@ -88,3 +88,9 @@ plotting.ipynb
 results/experiment_1a_GRU_grid_search.json
 .ipynb_checkpoints/inspecting_model_behaviour-checkpoint.ipynb
 inspecting_model_behaviour.ipynb
+group presentation/slides/ATNLP Group presentation.pdf
+paper/plots/paper - Shortcut.lnk
+results/experiment_1a_BiRNN_actions_results.json
+results/experiment_1a_BiRNN_commands_results.json
+results/experiment_1a_RNN_actions_results.json
+results/experiment_1a_RNN_commands_results.json
