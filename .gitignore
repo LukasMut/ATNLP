@@ -94,3 +94,7 @@ results/experiment_1a_BiRNN_actions_results.json
 results/experiment_1a_BiRNN_commands_results.json
 results/experiment_1a_RNN_actions_results.json
 results/experiment_1a_RNN_commands_results.json
+data/exp_3/primitive/test/tasks_test_addprim_jump.txt
+data/exp_3/primitive/train/tasks_train_addprim_jump.txt
+data/exp_3/primitive_extended/test/tasks_test_addprim_turn_left.txt
+data/exp_3/primitive_extended/train/tasks_train_addprim_turn_left.txt

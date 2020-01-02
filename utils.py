@@ -13,19 +13,21 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 device = ("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(42)
 
-def load_dataset(exp:str, split:str, subdir:str='./data'):
+def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str=''):
     """load dataset into memory
     Args: 
         exp (str): experiment (one of [exp_1a, exp_1b, exp_2, exp_3])
         split (str): train or test dataset
+        subexp (str): subexperiment with different primitives (only necessary for experiment 3)
     Returns:
         lang_vocab (dict): word2freq dictionary 
         w2i (dict): word2idx mapping
         i2w (dict): idx2word mapping
         lang (list): list of all sentences in either input (commands) or output (actions) language
     """
-    assert isinstance(exp, str), 'experiment must be one of [exp_1a, exp_1b, exp_2, exp_3]'
-    file = subdir+exp+split+'/'+os.listdir(subdir+exp+split).pop()
+    assert isinstance(exp, str), 'experiment must be one of [/exp_1, /exp_1, /exp_2, /exp_3]'
+    if exp=='/exp_3': assert len(subexp) > 0, 'subexp must be one of [primitive, primitive_extended]'
+    file = subdir+exp+subexp+split+'/'+os.listdir(subdir+exp+subexp+split).pop()
     cmd_start = 'IN:'
     act_start = 'OUT:'
     cmds, acts = [], []

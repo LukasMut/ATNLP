@@ -26,7 +26,7 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 ### Training ###
 
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
-          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
+          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True,detailed_results:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -50,10 +50,18 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     step_per_epoch = ratio_diff / epochs
     teacher_forcing_ratio = max_ratio
     
+    
+    # store detailed results per epoch
+    results_per_epoch = defaultdict(dict)
+    
     for epoch in trange(epochs,  desc="Epoch"):
         
         acc_per_epoch = 0
         losses_per_epoch = []
+        
+        # store detailed results for commands and actions respectively 
+        results_cmds = defaultdict(dict)
+        results_acts = defaultdict(dict) 
         
         for idx, (commands, input_lengths, actions, masks) in enumerate(train_dl):
            
@@ -143,9 +151,14 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             pred_sent = pred_sent.strip().split()
             pred_sent = ' '.join(pred_sent[:true_sent.split().index('<EOS>')+1])
             
+            
             # update accuracy
-            acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
-
+            if detailed_results:
+                results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
+                acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
+            else:
+                acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
+             
             loss.backward()
             
             current_loss = np.sum(losses_per_batch) / n_totals
@@ -178,6 +191,12 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         loss_per_epoch = np.mean(losses_per_epoch)
         acc_per_epoch /= n_lang_pairs
         
+        if detailed_results:
+            results_cmds = {cmd_length: (values['match'] / values['freq']) * 100 for cmd_length, values in results_cmds.items()}
+            results_acts = {act_length: (values['match'] / values['freq']) * 100 for act_length, values in results_acts.items()}
+            results_per_epoch['cmds'][epoch] = results_cmds
+            results_per_epoch['acts'][epoch] = results_acts
+            
         print("Train loss: {}".format(loss_per_epoch)) # loss
         print("Train acc: {}".format(acc_per_epoch)) # exact-match accuracy
         print("Current teacher forcing ratio {}".format(teacher_forcing_ratio))
@@ -187,8 +206,10 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         
         # decrease teacher forcing ratio per epoch
         teacher_forcing_ratio -= step_per_epoch 
-        
-    return train_losses, train_accs, encoder, decoder
+    if detailed_results:
+        return train_losses, train_accs, results_per_epoch, encoder, decoder
+    else:
+        return train_losses, train_accs, encoder, decoder
 
 
 ### Testing ###
