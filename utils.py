@@ -13,14 +13,55 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 device = ("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(42)
 
-def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str=''):
+def semantic_mapping(command:list):
+    """Semantic mapping of commands to actions according to phrase-structure grammar specified in SCAN task
+    Arg:
+        command (list) - list of command strings
+    Return:    
+        action (list) - list of action strings
+    """
+    u = {'walk', 'look', 'run', 'jump'}
+    if 'left' in command:
+        direction = 'I_TURN_LEFT' 
+    elif 'right' in command:
+        direction = 'I_TURN_RIGHT'
+    else:
+        direction = ''
+    prim = True
+    for w in u:
+        if w in command:
+            prim = False
+            w = 'I_' + w.upper() # prepend upper-case I and underscore to action word
+            break
+    if 'opposite' in command:
+        if prim:
+            action = direction + ' ' + direction + ' '
+        else:
+            action = direction + ' ' + direction + ' ' + w + ' '
+    else:
+        n = 4 if 'around' in command else 1
+        if prim:
+            action = (direction + ' ') * n  
+        else:
+            action = (direction + ' ' + w + ' ') * n
+    if 'thrice' in command:
+        rep = 3
+    elif 'twice' in command:
+        rep = 2
+    else:
+        rep = 1
+    return (action * rep).strip().split()
+
+def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str='', remove_conj:bool=False, sequence_copying:bool=False):
     """load dataset into memory
     Args: 
         exp (str): experiment (one of [exp_1a, exp_1b, exp_2, exp_3])
         split (str): train or test dataset
         subexp (str): subexperiment with different primitives (only necessary for experiment 3)
+        remove_conj (bool): specifies whether conjunctions (i.e., 'and', 'after') should be removed from commands
+        sequence_copying (bool): specifies whether copy of word sequence x_i should be appended to original word sequence x_i
     Returns:
-        lang_vocab (dict): word2freq dictionary 
+        lang_vocab (dict): word2freq dictionary
         w2i (dict): word2idx mapping
         i2w (dict): idx2word mapping
         lang (list): list of all sentences in either input (commands) or output (actions) language
@@ -32,11 +73,26 @@ def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str=''):
     act_start = 'OUT:'
     cmds, acts = [], []
     cmd_vocab, act_vocab = defaultdict(int), defaultdict(int)
-    
+
     with open(file, 'r', encoding='utf-8') as f:
         for line in f:
             cmd = line[line.index(cmd_start)+len(cmd_start):line.index(act_start)].strip().split()
             act = line[line.index(act_start)+len(act_start):].strip().split()
+            if remove_conj:
+                if re.search('after', ' '.join(cmd)):
+                    conj_idx = cmd.index('after')
+                    #NOTE: if remove conj, reverse the order of action sequence ("X_1 after X_2 -> X_2 X_1" -> "X_1 X_2 -> X_1 X_2")
+                    x_1 = semantic_mapping(cmd[:conj_idx])
+                    x_2 = act[:len(act)-len(x_1)]
+                    x_1.extend(x_2)
+                    act = x_1
+                    cmd.pop(conj_idx)
+                elif re.search('and', ' '.join(cmd)):
+                    conj_idx = cmd.index('and')
+                    cmd.pop(conj_idx)
+                if sequence_copying:
+                    act.extend(act)
+                    cmd.extend(cmd)
             for w in cmd: cmd_vocab[w] += 1
             for w in act: act_vocab[w] += 1
             cmds.append(cmd)

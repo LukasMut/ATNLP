@@ -45,11 +45,19 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     
     ## teacher forcing curriculum ##
     
-    # decrease teacher forcing ratio per epoch (start off with high ratio and move in equal steps to min_ratio)
+    # decrease teacher forcing ratio per epoch or per iters respectively (start off with high ratio and move in equal steps to min_ratio)
     ratio_diff = max_ratio-min_ratio
-    step_per_epoch = ratio_diff / epochs
-    teacher_forcing_ratio = max_ratio
     
+    # if bs == 1, then len(train_dl) == n_iters (i.e., 100k)
+    if batch_size == 1: 
+        assert len(train_dl) == 100000, 'for online training, number of training examples must be set to 100k'
+        assert epochs = 1, 'for online training, we run experiment for a single epoch of 100k iterations'
+        decrease_every = 20000
+        step_per_iters = ratio_diff / (len(train_dl) / decrease_every)
+    else:
+        step_per_epoch = ratio_diff / epochs
+        
+    teacher_forcing_ratio = max_ratio
     
     # store detailed results per epoch
     results_per_epoch = defaultdict(dict)
@@ -186,10 +194,15 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             # take step
             encoder_optimizer.step()
             decoder_optimizer.step()
+            
+            if batch_size == 1:
+                if idx > 0 and idx % decrease_every == 0:
+                    teacher_forcing_ratio -= step_per_iters
         
-        # compute loss and accuracy per epoch
-        loss_per_epoch = np.mean(losses_per_epoch)
-        acc_per_epoch /= n_lang_pairs
+        if batch_size > 1:
+            # compute loss and accuracy per epoch
+            loss_per_epoch = np.mean(losses_per_epoch)
+            acc_per_epoch /= n_lang_pairs
         
         if detailed_results:
             results_cmds = {cmd_length: (values['match'] / values['freq']) * 100 for cmd_length, values in results_cmds.items()}
