@@ -51,7 +51,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     # if bs == 1, then len(train_dl) == n_iters (i.e., 100k)
     if batch_size == 1: 
         assert len(train_dl) == 100000, 'for online training, number of training examples must be set to 100k'
-        assert epochs = 1, 'for online training, we run experiment for a single epoch of 100k iterations'
+        assert epochs == 1, 'for online training, we run experiment for a single epoch of 100k iterations'
         decrease_every = 20000
         step_per_iters = ratio_diff / (len(train_dl) / decrease_every)
     else:

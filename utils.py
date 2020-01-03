@@ -14,11 +14,11 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(42)
 
 def semantic_mapping(command:list):
-    """Semantic mapping of commands to actions according to phrase-structure grammar specified in SCAN task
+    """Semantic mapping of command to action sequences according to phrase-structure grammar specified in SCAN task
     Arg:
-        command (list) - list of command strings
+        command (list) - list of command strings until first occurrence of conjunction
     Return:    
-        action (list) - list of action strings
+        action (list) - command strings translated into action strings
     """
     u = {'walk', 'look', 'run', 'jump'}
     if 'left' in command:
@@ -66,8 +66,8 @@ def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str='', remove_
         i2w (dict): idx2word mapping
         lang (list): list of all sentences in either input (commands) or output (actions) language
     """
-    assert isinstance(exp, str), 'experiment must be one of [/exp_1, /exp_1, /exp_2, /exp_3]'
-    if exp=='/exp_3': assert len(subexp) > 0, 'subexp must be one of [primitive, primitive_extended]'
+    assert isinstance(exp, str), 'experiment must be one of {/exp_1, /exp_1, /exp_2, /exp_3}'
+    if exp=='/exp_3': assert len(subexp) > 0, 'subexp must be one of {primitive, primitive_extended}'
     file = subdir+exp+subexp+split+'/'+os.listdir(subdir+exp+subexp+split).pop()
     cmd_start = 'IN:'
     act_start = 'OUT:'
@@ -90,9 +90,9 @@ def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str='', remove_
                 elif re.search('and', ' '.join(cmd)):
                     conj_idx = cmd.index('and')
                     cmd.pop(conj_idx)
-                if sequence_copying:
-                    act.extend(act)
-                    cmd.extend(cmd)
+            if sequence_copying:
+                act.extend(act)
+                cmd.extend(cmd)
             for w in cmd: cmd_vocab[w] += 1
             for w in act: act_vocab[w] += 1
             cmds.append(cmd)
@@ -130,7 +130,7 @@ def max_length(seqs:list): return max((len(seq) for seq in seqs))
 def zero_padding(seqs:list, max_length:int, pad_token:int):
     return pad_sequences(seqs, maxlen=max_length, dtype='int64', padding='post', truncating='post', value=pad_token)
 
-def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True, training:bool=True):
+def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=True, training:bool=True, reverse_source:bool=False):
     """command-action pair to indices mapping
     Args:
         commands (list): natural language commands (each command is represented through strings)
@@ -157,6 +157,10 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
     else:
         cmd_sequences = np.array([s2i(cmd, w2i_cmd, decode=False) for cmd in cmds])
         act_sequences = np.array([s2i(act, w2i_act, decode=True) for act in acts])
+        
+    if reverse_source:
+        # reverse the order of words in the source sentence
+        cmd_sequences = cmd_sequences[::-1]
         
     cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
     act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
