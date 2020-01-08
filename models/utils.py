@@ -1,4 +1,4 @@
-__all__ = ['train', 'test', 'sample_distinct_pairs']
+__all__ = ['train', 'test', 'cosine_similarity', 'compute_similarities', 'sample_distinct_pairs']
 
 import numpy as np
 import torch.nn as nn
@@ -28,7 +28,7 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
           learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True,
-          detailed_results:bool=False):
+          detailed_results:bool=False, similarity_computation:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -63,6 +63,9 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
     
     # store detailed results per epoch
     results_per_epoch = defaultdict(dict)
+    
+    if similarity_computation:
+        command_hiddens = {}
     
     for epoch in trange(epochs,  desc="Epoch"):
         
@@ -102,6 +105,15 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
                     decoder_hidden = sum_directions(encoder_hidden)
             else:
                 decoder_hidden = encoder_hidden
+            
+            # use final hidden states only from last epoch (shortly before model convergence)
+            if similarity_computation and epoch == epochs - 1:
+                commands = commands.cpu().numpy()
+                commands_str = idx_to_str_mapping(commands, i2w_source)
+                command_h = decoder_hidden.squeeze(0) if decoder_hidden.size(0) == 1 else decoder_hidden[0].squeeze(0)
+                for i, cmd in enumerate(commands_str):
+                    #  per command, store final encoder hidden states
+                    command_hiddens[' '.join(cmd)] = command_h[i]
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             
@@ -223,6 +235,8 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         teacher_forcing_ratio -= step_per_epoch 
     if detailed_results:
         return train_losses, train_accs, results_per_epoch, encoder, decoder
+    elif similarity_computation:
+        return train_losses, train_accs, command_hiddens, encoder, decoder
     else:
         return train_losses, train_accs, encoder, decoder
 
@@ -230,7 +244,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 ### Testing ###
 
 def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int,
-         detailed_analysis:bool=True, detailed_results:bool=False, experiment_3:bool=False):
+         detailed_analysis:bool=True, detailed_results:bool=False, components_accuracy:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -241,6 +255,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     
     # each n_iters plot behaviour of RNN Decoder
     plot_batches = 50
+    
     # total number of language pairs
     n_lang_pairs = len(test_dl) * batch_size
     
@@ -251,9 +266,9 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
         results_cmds = defaultdict(dict)
         results_acts = defaultdict(dict)
         
-    if experiment_3:
+    if components_accuracy:
         results_per_component = defaultdict(dict)
-    
+        
     test_acc = 0
     
     # no gradient computation for evaluation mode
@@ -314,7 +329,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
                 results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
                 
-            elif experiment_3:
+            elif components_accuracy:
                 # accuracy as a function of individual input components
                 results_per_component = component_based_accuracy(preds, commands, i2w_source, i2w_target, results_per_component)
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
@@ -344,7 +359,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
         results_acts = {act_length: (vals['match'] / vals['freq']) * 100 for act_length, vals in results_acts.items()}
         return test_acc, results_cmds, results_acts
 
-    elif experiment_3:
+    elif components_accuracy:
         acc_per_component = {}
         for component, vals in results_per_component.items():
             try:
@@ -360,10 +375,21 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
 ### Helper functions for training and testing ###
 
+# compute cosine similarities between hidden states of commands
+def compute_similarities(command_hiddens:dict, command:str, n_neighbours:int=5):
+    command_h = command_hiddens[command]
+    neighbours = {}
+    #del command_hiddens[command]
+    for cmd, h in command_hiddens.items():
+        if cmd != command:
+            neighbours[cmd] = cosine_similarity(command_h, h)
+    nearest_neighbours = dict(sorted(neighbours.items(), key=lambda kv:kv[1], reverse=True)[:n_neighbours])
+    return nearest_neighbours
+
 # cosine similarity
 def cosine_similarity(x:torch.Tensor, y:torch.Tensor):
-    x, y = x.cpu().numpy(), y.cpu().numpy()
-    num = np.dot(x, y)
+    x, y = x.detach().cpu().numpy(), y.detach().cpu().numpy()
+    num = x @ y
     denom = np.linalg.norm(x) * np.linalg.norm(y) # default is Frobenius norm (i.e., L2 norm)
     return num / denom
 
@@ -506,15 +532,15 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
         true_act = true_act[:true_act.index(EOS_token)+1]
         
         # count frequency of different command and action sequence lengths respectively
-        if 'freq' not in results_cmds[cmd_length]:
-            results_cmds[cmd_length]['freq'] = 1
-        else:
+        if 'freq' in results_cmds[cmd_length]:
             results_cmds[cmd_length]['freq'] += 1
-
-        if 'freq' not in results_acts[len(true_act)]:
-            results_acts[len(true_act)]['freq'] = 1
         else:
+            results_cmds[cmd_length]['freq'] = 1
+
+        if 'freq' in results_acts[len(true_act)]:
             results_acts[len(true_act)]['freq'] += 1
+        else:
+            results_acts[len(true_act)]['freq'] = 1
             
         # for each sentence, calculate exact match token accuracy (until first occurrence of an EOS token)
         try:
@@ -522,15 +548,15 @@ def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.
             
             match = 1 if np.array_equal(pred_act, true_act) else 0 # exact match accuracy
             
-            if 'match' not in results_cmds[cmd_length]:
-                results_cmds[cmd_length]['match'] = match
-            else:
+            if 'match' in results_cmds[cmd_length]:
                 results_cmds[cmd_length]['match'] += match
-                
-            if 'match' not in results_acts[len(true_act)]:
-                results_acts[len(true_act)]['match'] = match
             else:
+                results_cmds[cmd_length]['match'] = match
+                
+            if 'match' in results_acts[len(true_act)]:
                 results_acts[len(true_act)]['match'] += match
+            else:
+                results_acts[len(true_act)]['match'] = match
         
         except ValueError:
             if 'match' not in results_cmds[cmd_length]:

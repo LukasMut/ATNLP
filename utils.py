@@ -67,7 +67,7 @@ def load_dataset(exp:str, split:str, subdir:str='./data', subexp:str='', remove_
         lang (list): list of all sentences in either input (commands) or output (actions) language
     """
     assert isinstance(exp, str), 'experiment must be one of {/exp_1, /exp_1, /exp_2, /exp_3}'
-    if exp=='/exp_3': assert len(subexp) > 0, 'subexp must be one of {primitive, primitive_extended}'
+    if exp=='/exp_3': assert len(subexp) > 0, 'subexp must be one of {turn_left, jump}'
     file = subdir+exp+subexp+split+'/'+os.listdir(subdir+exp+subexp+split).pop()
     cmd_start = 'IN:'
     act_start = 'OUT:'
