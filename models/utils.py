@@ -3,6 +3,7 @@ __all__ = ['train', 'test', 'sample_distinct_pairs']
 import numpy as np
 import torch.nn as nn
 import random
+import re 
 import torch
 
 from collections import defaultdict
@@ -14,7 +15,7 @@ from torch.utils.data import TensorDataset
 
 from models.Encoder import *
 from models.Decoder import *
-from utils import pairs2idx, s2i
+from utils import pairs2idx, s2i, semantic_mapping
 
 # set fixed random seeds to reproduce results
 np.random.seed(42)
@@ -26,7 +27,8 @@ device = ("cuda" if torch.cuda.is_available() else "cpu")
 ### Training ###
 
 def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int,
-          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True,detailed_results:bool=False):
+          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True,
+          detailed_results:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -228,7 +230,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 ### Testing ###
 
 def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int,
-         detailed_analysis:bool=True, detailed_results:bool=False):
+         detailed_analysis:bool=True, detailed_results:bool=False, experiment_3:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -245,8 +247,12 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     # NOTE: NO TEACHER FORCING DURING TESTING !!!
     
     # store detailed results for experiment 2
-    results_cmds = defaultdict(dict)
-    results_acts = defaultdict(dict) 
+    if detailed_results:
+        results_cmds = defaultdict(dict)
+        results_acts = defaultdict(dict)
+        
+    if experiment_3:
+        results_per_component = defaultdict(dict)
     
     test_acc = 0
     
@@ -304,8 +310,15 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
             
             # update accuracy
             if detailed_results:
+                # accuracy as a function of command or action sequence length
                 results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
+                
+            elif experiment_3:
+                # accuracy as a function of individual input components
+                results_per_component = component_based_accuracy(preds, commands, i2w_source, i2w_target, results_per_component)
+                test_acc = exact_match_accuracy(preds, actions, test_acc)
+                
             else:
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
 
@@ -327,13 +340,115 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     
     if detailed_results:
-        results_cmds = {cmd_length: (values['match'] / values['freq']) * 100 for cmd_length, values in results_cmds.items()}
-        results_acts = {act_length: (values['match'] / values['freq']) * 100 for act_length, values in results_acts.items()}
+        results_cmds = {cmd_length: (vals['match'] / vals['freq']) * 100 for cmd_length, vals in results_cmds.items()}
+        results_acts = {act_length: (vals['match'] / vals['freq']) * 100 for act_length, vals in results_acts.items()}
         return test_acc, results_cmds, results_acts
+
+    elif experiment_3:
+        acc_per_component = {}
+        for component, vals in results_per_component.items():
+            try:
+                acc_per_component[component] = (vals['match'] / vals['freq']) * 100
+            # there might be no key for 'match', if the model was never correct for a particular command-component
+            except KeyError:
+                acc_per_component[component] = 0
+        acc_per_component = dict(sorted(acc_per_component.items(), key=lambda kv:kv[1], reverse=True))
+        return test_acc, acc_per_component
+    
     else:
         return test_acc
 
 ### Helper functions for training and testing ###
+
+# cosine similarity
+def cosine_similarity(x:torch.Tensor, y:torch.Tensor):
+    x, y = x.cpu().numpy(), y.cpu().numpy()
+    num = np.dot(x, y)
+    denom = np.linalg.norm(x) * np.linalg.norm(y) # default is Frobenius norm (i.e., L2 norm)
+    return num / denom
+
+# mapping of index sequences (in a batch) to corresponding string sequences
+def idx_to_str_mapping(idx_seqs:list, i2w_dict:dict, special_tokens:list=[0, 1, 2]):
+    return list(map(lambda idx_seq: [i2w_dict[idx] for idx in idx_seq if idx not in special_tokens], idx_seqs))
+
+# computation of component-based (i.e., phrase-based) exact-match accuracy
+def component_based_accuracy(pred_actions:torch.Tensor, commands:torch.Tensor, i2w_source:dict, i2w_target:dict,
+                             results_per_component:dict, conjunctions:list=['and', 'after']):
+    """phrase-based exact-match accuracy computation
+    Args:
+        pred_actions (torch.Tensor) - batch of predicted action sequences (i.e., yhat)
+        commands (torch.Tensor) - batch of padded command sequences
+        i2w_source (dict) - idx-to-word dictionary for commands (source)
+        i2w_target (dict) - idx-to-word dictionary for actions (target)
+        results_per_component (dict) - current exact-match performance per command component
+        conjunctions (list) - list of all conjunctions in source language
+    Returns:
+        results_per_component (dict) - updated exact-match performance per command component
+    """
+    pred_actions = pred_actions.cpu().numpy().tolist()
+    commands = commands.cpu().numpy().tolist()
+    pred_actions_str = idx_to_str_mapping(pred_actions, i2w_target)
+    commands_str = idx_to_str_mapping(commands, i2w_source)
+    for cmd, pred_act in zip(commands_str, pred_actions_str):
+        multiple_components = False
+        for conj in conjunctions:
+            if re.search(conj, ' '.join(cmd)):
+                multiple_components = True
+                conj_idx = cmd.index(conj)
+                cmp_1 = cmd[:conj_idx]
+                cmp_2 = cmd[conj_idx + 1:]
+                if conj == 'and':
+                    x_1 = semantic_mapping(cmp_1)
+                    x_2 = semantic_mapping(cmp_2)
+                    cmp_1 = ' '.join(cmp_1)
+                    cmp_2 = ' '.join(cmp_2)
+                    if pred_act[:len(x_1)] == x_1:
+                        if 'match' in results_per_component[cmp_1]:
+                            results_per_component[cmp_1]['match'] += 1
+                        else:
+                            results_per_component[cmp_1]['match'] = 1
+                    if pred_act[len(x_1):] == x_2:
+                        if 'match' in results_per_component[cmp_2]:
+                            results_per_component[cmp_2]['match'] += 1
+                        else:
+                            results_per_component[cmp_2]['match'] = 1
+                elif conj == 'after':
+                    # translate in reverse command sequence order --> [x1 after x_2]
+                    x_2 = semantic_mapping(cmp_1)
+                    x_1 = semantic_mapping(cmp_2)
+                    cmp_1 = ' '.join(cmp_1)
+                    cmp_2 = ' '.join(cmp_2)
+                    if pred_act[:len(x_2)] == x_2:
+                        if 'match' in results_per_component[cmp_1]:
+                            results_per_component[cmp_1]['match'] += 1
+                        else:
+                            results_per_component[cmp_1]['match'] = 1
+                    if pred_act[len(x_2):] == x_1:
+                        if 'match' in results_per_component[cmp_2]:
+                            results_per_component[cmp_2]['match'] += 1
+                        else:
+                            results_per_component[cmp_2]['match'] = 1                
+                if 'freq' in results_per_component[cmp_1]:
+                    results_per_component[cmp_1]['freq'] += 1
+                else:
+                    results_per_component[cmp_1]['freq'] = 1
+                if 'freq' in results_per_component[cmp_2]:
+                    results_per_component[cmp_2]['freq'] += 1
+                else:
+                    results_per_component[cmp_2]['freq'] = 1
+        if not multiple_components:
+            x = semantic_mapping(cmd)
+            cmd = ' '.join(cmd)
+            if pred_act == x:
+                if 'match' in results_per_component[cmd]:
+                    results_per_component[cmd]['match'] += 1
+                else:
+                    results_per_component[cmd]['match'] = 1
+            if 'freq' in results_per_component[cmd]: 
+                results_per_component[cmd]['freq'] += 1
+            else:
+                results_per_component[cmd]['freq'] = 1
+    return results_per_component
 
 # this functions sums forward- and backward hidden states to leverage the full potential of bidirectional encoders
 def sum_directions(encoder_hidden:torch.Tensor, lstm:bool=False):

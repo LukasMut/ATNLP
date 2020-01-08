@@ -155,12 +155,12 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
             for i, act in enumerate(act_sequences):
                 act_masks[i, act != pad_token] = 1
     else:
-        cmd_sequences = np.array([s2i(cmd, w2i_cmd, decode=False) for cmd in cmds])
+        if reverse_source:
+            # reverse the order of words in every source sentence x_i
+            cmd_sequences = np.array([s2i(cmd, w2i_cmd, decode=False)[::-1] for cmd in cmds])
+        else:
+            cmd_sequences = np.array([s2i(cmd, w2i_cmd, decode=False) for cmd in cmds])
         act_sequences = np.array([s2i(act, w2i_act, decode=True) for act in acts])
-        
-    if reverse_source:
-        # reverse the order of words in the source sentence
-        cmd_sequences = cmd_sequences[::-1]
         
     cmd_sequences = Variable(torch.tensor(cmd_sequences, dtype=torch.long).to(device))
     act_sequences = Variable(torch.tensor(act_sequences, dtype=torch.long).to(device))
