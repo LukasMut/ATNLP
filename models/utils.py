@@ -106,13 +106,13 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             else:
                 decoder_hidden = encoder_hidden
             
-            # use final hidden states only from last epoch (shortly before model convergence)
+            # exploit final hidden states only from last epoch (shortly before model convergence)
             if similarity_computation and epoch == epochs - 1:
                 commands = commands.cpu().numpy()
                 commands_str = idx_to_str_mapping(commands, i2w_source)
                 command_h = decoder_hidden.squeeze(0) if decoder_hidden.size(0) == 1 else decoder_hidden[0].squeeze(0)
                 for i, cmd in enumerate(commands_str):
-                    #  per command, store final encoder hidden states
+                    # per command, store final encoder hidden states
                     command_hiddens[' '.join(cmd)] = command_h[i]
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
@@ -364,9 +364,9 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
         for component, vals in results_per_component.items():
             try:
                 acc_per_component[component] = (vals['match'] / vals['freq']) * 100
-            # there might be no key for 'match', if the model was never correct for a particular command-component
+            # if the model is never correct for a particular phrase, there'll be no key for 'match'
             except KeyError:
-                acc_per_component[component] = 0
+                acc_per_component[component] = float(0)
         acc_per_component = dict(sorted(acc_per_component.items(), key=lambda kv:kv[1], reverse=True))
         return test_acc, acc_per_component
     

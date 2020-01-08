@@ -104,3 +104,4 @@ data/exp_3/jump/test/tasks_test_addprim_jump.txt
 data/exp_3/jump/train/tasks_train_addprim_jump.txt
 data/exp_3/turn_left/test/tasks_test_addprim_turn_left.txt
 data/exp_3/turn_left/train/tasks_train_addprim_turn_left.txt
+.ipynb_checkpoints/experiment_3-checkpoint.ipynb
