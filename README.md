@@ -19,7 +19,7 @@ Deadline for reimplementation of experiment 2): December 15th
 
 Christmas break (break from the project): 19th - 26th
 
-Final deadline for entire reimplementation of the paper: January 7th
+Updated deadline for entire reimplementation of the paper: January 11th
 
 Implementing extra features (e.g Diff attentions) : January 14th
 
