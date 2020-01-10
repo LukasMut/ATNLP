@@ -172,7 +172,7 @@ def pairs2idx(cmds:list, acts:list, w2i_cmd:dict, w2i_act:dict, padding:bool=Tru
         return cmd_sequences, act_sequences, input_lengths
 
 def create_batches(cmds:torch.Tensor, acts:torch.Tensor, input_lengths:torch.Tensor, batch_size:int, masks:bool=None,
-                   split:str='train', num_samples:bool=None):
+                   split:str='train', num_samples:bool=None, compute_cosines:bool=False):
     """creates mini-batches of source-target pairs
     Args:
         cmds (torch.tensor): command sequences
@@ -188,8 +188,11 @@ def create_batches(cmds:torch.Tensor, acts:torch.Tensor, input_lengths:torch.Ten
     data = TensorDataset(cmds, input_lengths, acts, masks) if isinstance(masks, torch.Tensor) else TensorDataset(cmds, input_lengths, acts)
     if split == 'train':
         isinstance(num_samples, int), 'number of samples to draw must be specified if split is training'
-        # during training randomly sample elements from the train set 
-        sampler = RandomSampler(data, replacement=True, num_samples=num_samples)
+        # during training randomly sample elements from the train set
+        if compute_cosines:
+            sampler = RandomSampler(data, replacement=False)
+        else:
+            sampler = RandomSampler(data, replacement=True, num_samples=num_samples)
     elif split == 'test':
         # during testing sequentially sample elements from the test set (i.e., always sample in the same order)
         sampler = SequentialSampler(data)

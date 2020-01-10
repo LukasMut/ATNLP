@@ -77,7 +77,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         results_acts = defaultdict(dict) 
         
         for idx, (commands, input_lengths, actions, masks) in enumerate(train_dl):
-           
+                       
             commands, input_lengths, actions, masks = sort_batch(commands, input_lengths, actions, masks)
             
             losses_per_batch = []
@@ -217,7 +217,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             # compute loss and accuracy per epoch
             loss_per_epoch = np.mean(losses_per_epoch)
             acc_per_epoch /= n_lang_pairs
-        
+            
         if detailed_results:
             results_cmds = {cmd_length: (values['match'] / values['freq']) * 100 for cmd_length, values in results_cmds.items()}
             results_acts = {act_length: (values['match'] / values['freq']) * 100 for act_length, values in results_acts.items()}
@@ -274,7 +274,8 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
     # no gradient computation for evaluation mode
     with torch.no_grad():
         for idx, (commands, input_lengths, actions) in enumerate(test_dl):
-            # if current batch_size is smaller than batch_size, skip batch
+            
+            # if current batch_size is smaller than specified batch_size, skip batch
             if len(commands) != batch_size:
                 n_lang_pairs_not_tested = len(commands)
                 continue
