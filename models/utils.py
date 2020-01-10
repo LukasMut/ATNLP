@@ -176,7 +176,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
             
             # update accuracy
             if detailed_results:
-                results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
+                results_cmds, results_acts = per_length_accuracy(preds, actions, input_lengths, results_cmds, results_acts)
                 acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
             else:
                 acc_per_epoch = exact_match_accuracy(preds, actions, acc_per_epoch)
@@ -244,7 +244,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
 ### Testing ###
 
 def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, batch_size:int,
-         detailed_analysis:bool=True, detailed_results:bool=False, components_accuracy:bool=False):
+         detailed_analysis:bool=True, detailed_results:bool=False, components_performance:bool=False):
     
     # <PAD> token corresponds to index 0
     PAD_token = 0
@@ -266,7 +266,7 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
         results_cmds = defaultdict(dict)
         results_acts = defaultdict(dict)
         
-    if components_accuracy:
+    if components_performance:
         results_per_component = defaultdict(dict)
         
     test_acc = 0
@@ -327,12 +327,12 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
             # update accuracy
             if detailed_results:
                 # accuracy as a function of command or action sequence length
-                results_cmds, results_acts = exact_match_accuracy_detailed(preds, actions, input_lengths, results_cmds, results_acts)
+                results_cmds, results_acts = per_length_accuracy(preds, actions, input_lengths, results_cmds, results_acts)
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
                 
-            elif components_accuracy:
+            elif components_performance:
                 # accuracy as a function of individual input components
-                results_per_component = component_based_accuracy(preds, commands, i2w_source, i2w_target, results_per_component)
+                results_per_component = component_based_performance(preds, commands, i2w_source, i2w_target, results_per_component)
                 test_acc = exact_match_accuracy(preds, actions, test_acc)
                 
             else:
@@ -360,31 +360,36 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
         results_acts = {act_length: (vals['match'] / vals['freq']) * 100 for act_length, vals in results_acts.items()}
         return test_acc, results_cmds, results_acts
 
-    elif components_accuracy:
-        acc_per_component = {}
+    elif components_performance:
+        acc_per_component, errors_per_component = {}, {}
         for component, vals in results_per_component.items():
-            try:
+            if 'match' in vals:
                 acc_per_component[component] = (vals['match'] / vals['freq']) * 100
-            # if the model is never correct for a particular phrase, there'll be no key for 'match'
-            except KeyError:
+            else:
                 acc_per_component[component] = float(0)
-        acc_per_component = dict(sorted(acc_per_component.items(), key=lambda kv:kv[1], reverse=True))
-        return test_acc, acc_per_component
+            if 'errors' in vals:
+                errors_per_component[component] = vals['errors']
+            else:
+                errors_per_component[component] = 0
+        acc_per_component = sort_results(acc_per_component)
+        errors_per_component = sort_results(errors_per_component)
+        return test_acc, acc_per_component, errors_per_component
     
     else:
         return test_acc
 
 ### Helper functions for training and testing ###
 
+def sort_results(results:dict, stop:int=None): return dict(sorted(results.items(), key=lambda kv:kv[1], reverse=True)[:stop])
+
 # compute cosine similarities between hidden states of commands
 def compute_similarities(command_hiddens:dict, command:str, n_neighbours:int=5):
     command_h = command_hiddens[command]
+    del command_hiddens[command]
     neighbours = {}
-    #del command_hiddens[command]
     for cmd, h in command_hiddens.items():
-        if cmd != command:
-            neighbours[cmd] = cosine_similarity(command_h, h)
-    nearest_neighbours = dict(sorted(neighbours.items(), key=lambda kv:kv[1], reverse=True)[:n_neighbours])
+        neighbours[cmd] = cosine_similarity(command_h, h)
+    nearest_neighbours = sort_results(neighbours, n_neighbours)
     return nearest_neighbours
 
 # cosine similarity
@@ -399,18 +404,18 @@ def idx_to_str_mapping(idx_seqs:list, i2w_dict:dict, special_tokens:list=[0, 1, 
     return list(map(lambda idx_seq: [i2w_dict[idx] for idx in idx_seq if idx not in special_tokens], idx_seqs))
 
 # computation of component-based (i.e., phrase-based) exact-match accuracy
-def component_based_accuracy(pred_actions:torch.Tensor, commands:torch.Tensor, i2w_source:dict, i2w_target:dict,
-                             results_per_component:dict, conjunctions:list=['and', 'after']):
-    """phrase-based exact-match accuracy computation
+def component_based_performance(pred_actions:torch.Tensor, commands:torch.Tensor, i2w_source:dict, i2w_target:dict,
+                                results_per_component:dict, conjunctions:list=['and', 'after']):
+    """phrase-based exact-match accuracy and error computation
     Args:
-        pred_actions (torch.Tensor) - batch of predicted action sequences (i.e., yhat)
+        pred_actions (torch.Tensor) - batch of predicted action sequences (i.e., y_hat)
         commands (torch.Tensor) - batch of padded command sequences
         i2w_source (dict) - idx-to-word dictionary for commands (source)
         i2w_target (dict) - idx-to-word dictionary for actions (target)
-        results_per_component (dict) - current exact-match performance per command component
-        conjunctions (list) - list of all conjunctions in source language
+        results_per_component (dict) - current exact-match performance per command component (i.e., errors and matches)
+        conjunctions (list) - list of all conjunctions in source language corpus
     Returns:
-        results_per_component (dict) - updated exact-match performance per command component
+        results_per_component (dict) - updated exact-match performance per command component (i.e., errors and matches)
     """
     pred_actions = pred_actions.cpu().numpy().tolist()
     commands = commands.cpu().numpy().tolist()
@@ -434,11 +439,21 @@ def component_based_accuracy(pred_actions:torch.Tensor, commands:torch.Tensor, i
                             results_per_component[cmp_1]['match'] += 1
                         else:
                             results_per_component[cmp_1]['match'] = 1
+                    else:
+                        if 'errors' in results_per_component[cmp_1]:
+                            results_per_component[cmp_1]['errors'] += 1
+                        else:
+                            results_per_component[cmp_1]['errors'] = 1
                     if pred_act[len(x_1):] == x_2:
                         if 'match' in results_per_component[cmp_2]:
                             results_per_component[cmp_2]['match'] += 1
                         else:
                             results_per_component[cmp_2]['match'] = 1
+                    else:
+                        if 'errors' in results_per_component[cmp_2]:
+                            results_per_component[cmp_2]['errors'] += 1
+                        else:
+                            results_per_component[cmp_2]['errors'] = 1
                 elif conj == 'after':
                     # translate in reverse command sequence order --> [x1 after x_2]
                     x_2 = semantic_mapping(cmp_1)
@@ -450,11 +465,21 @@ def component_based_accuracy(pred_actions:torch.Tensor, commands:torch.Tensor, i
                             results_per_component[cmp_1]['match'] += 1
                         else:
                             results_per_component[cmp_1]['match'] = 1
+                    else:
+                        if 'errors' in results_per_component[cmp_1]:
+                            results_per_component[cmp_1]['errors'] += 1
+                        else:
+                            results_per_component[cmp_1]['errors'] = 1
                     if pred_act[len(x_2):] == x_1:
                         if 'match' in results_per_component[cmp_2]:
                             results_per_component[cmp_2]['match'] += 1
                         else:
-                            results_per_component[cmp_2]['match'] = 1                
+                            results_per_component[cmp_2]['match'] = 1
+                    else:
+                        if 'errors' in results_per_component[cmp_2]:
+                            results_per_component[cmp_2]['errors'] += 1
+                        else:
+                            results_per_component[cmp_2]['errors'] = 1
                 if 'freq' in results_per_component[cmp_1]:
                     results_per_component[cmp_1]['freq'] += 1
                 else:
@@ -471,6 +496,11 @@ def component_based_accuracy(pred_actions:torch.Tensor, commands:torch.Tensor, i
                     results_per_component[cmd]['match'] += 1
                 else:
                     results_per_component[cmd]['match'] = 1
+            else:
+                if 'errors' in results_per_component[cmd]:
+                    results_per_component[cmd]['errors'] += 1
+                else:
+                    results_per_component[cmd]['errors'] = 1
             if 'freq' in results_per_component[cmd]: 
                 results_per_component[cmd]['freq'] += 1
             else:
@@ -520,7 +550,7 @@ def exact_match_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, a
     return acc
 
 # detailed exact match accuracy for command and action sequences for experiment 2
-def exact_match_accuracy_detailed(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
+def per_length_accuracy(pred_actions:torch.Tensor, true_actions:torch.Tensor, input_lengths:torch.Tensor,
                                   results_cmds:dict, results_acts:dict):
     EOS_token = 2
     input_lengths = list(map(lambda cmd_length: cmd_length.cpu().item(), input_lengths))
