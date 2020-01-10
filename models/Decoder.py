@@ -10,12 +10,12 @@ from models.Attention import *
 is_cuda = torch.cuda.is_available()
 
 # If we have a GPU available, we'll set our device to GPU. We'll use this device variable later in our code.
-if is_cuda:
-    device = torch.device("cuda")
-    print("GPU is available")
-else:
-    device = torch.device("cpu")
-    print("GPU not available, CPU used")
+#if is_cuda:
+#    device = torch.device("cuda")
+#    print("GPU is available")
+#else:
+device = torch.device("cpu")
+print("CPU used")
 
 class DecoderRNN(nn.Module):
     

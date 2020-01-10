@@ -3,6 +3,7 @@ __all__ = ['train', 'test', 'sample_distinct_pairs']
 import numpy as np
 import torch.nn as nn
 import random
+import re
 import torch
 
 from itertools import islice
@@ -13,21 +14,21 @@ from torch.utils.data import TensorDataset
 
 from models.Encoder import *
 from models.Decoder import *
-from utils import pairs2idx, s2i
+from utils import pairs2idx, s2i, semantic_mapping
 
 # set fixed random seed to reproduce results
 np.random.seed(42)
 random.seed(42)
 
-device = ("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu" #("cuda" if torch.cuda.is_available() else "cpu")
 
 ### Training ###
 
 def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decoder, epochs:int, batch_size:int=1,
-          learning_rate:float=1e-3, max_ratio:float=0.95, min_ratio:float=0.15, detailed_analysis:bool=True):
+          learning_rate:float=1e-3, detailed_analysis:bool=True, phrase_based_loss:bool=False):
     
     # number of training presentations (most training examples are shown multiple times during training, some more often than others)
-    n_iters = 100000
+    n_iters = 20000 #100000
     
     # each plot_iters display behaviour of RNN Decoder
     plot_iters = 10000
@@ -48,11 +49,7 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
     # negative log-likelihood loss
     criterion = nn.NLLLoss()
     
-    # teacher forcing curriculum
-    # decrease teacher forcing ratio per epoch (start off with high ratio and move in equal steps to min_ratio)
-    ratio_diff = max_ratio-min_ratio
-    step_per_epoch = ratio_diff / epochs
-    teacher_forcing_ratio = max_ratio
+    teacher_forcing_ratio = 0.5
     
     for epoch in trange(epochs,  desc="Epoch"):
                 
@@ -85,44 +82,112 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
             
             pred_sent = ""
             true_sent = ' '.join([i2w_target[act.item()] for act in islice(action, 1, None)]).strip() # skip SOS token
-
+            
+            if phrase_based_loss:
+                x, multiple_components = phrase2phrase_mapping(command, i2w_source)
+                length_x = len(x)
+                if multiple_components:
+                    length_x2 = target_length - length_x - 2 # <SOS> and <EOS> tokens must not be considered in phrase-based loss
+                start_idx = 1
+                decoded_phrase = []
+  
             if use_teacher_forcing:
                 # Teacher forcing: feed target as the next input
                 for i in range(1, target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     dim = 1 if len(decoder_out.shape) > 1 else 0  # crucial to correctly compute the argmax
                     pred = torch.argmax(decoder_out, dim) # argmax computation
-                    
-                    loss += criterion(decoder_out, action[i].unsqueeze(0))
                     decoder_input = action[i] # convert list of int into int
+                    
+                    if phrase_based_loss:
+                        # compute phrase-based loss
+                        decoded_phrase.append(decoder_out.squeeze(0).detach().numpy())
+                        if i == length_x and i < target_length:
+                            decoded_phrase = torch.tensor(np.array(decoded_phrase), requires_grad=True, dtype=torch.double)
+                            actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
+                            try:
+                                loss += criterion(decoded_phrase, actual_phrase)
+                            except ValueError:
+                                print(decoded_phrase)
+                                print(start_idx)
+                                print(length_x)
+                                print(actual_phrase)
+                                raise Exception
+                            decoded_phrase = []
+                            if multiple_components:
+                                start_idx += length_x
+                                length_x += length_x2
+                                
+                        elif i >= target_length:
+                            loss += criterion(decoder_out, action[-1].unsqueeze(0))
+                    else:
+                        # compute standard negative log-likelihood loss
+                        loss += criterion(decoder_out, action[i].unsqueeze(0))
                     
                     pred_sent += i2w_target[pred.item()] + " "
                     
-                    if pred.squeeze().item() == w2i_target['<EOS>']:
-                        break
+                    #if pred.squeeze().item() == w2i_target['<EOS>']:
+                    #    break
             else:
                 # Autoregressive RNN: feed previous prediction as the next input
                 for i in range(1, max_target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
                     pred = torch.argmax(decoder_out, dim) # argmax computation
-                    
-                    if i >= target_length:
-                        loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'], dtype=torch.long).unsqueeze(0).to(device))
+                                        
+                    if phrase_based_loss:
+                        decoded_phrase.append(decoder_out.squeeze(0).detach().numpy())
+                        if i == length_x and i < target_length:
+                            decoded_phrase = torch.tensor(np.array(decoded_phrase), requires_grad=True, dtype=torch.double)
+                            actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
+                            try:
+                                loss += criterion(decoded_phrase, actual_phrase)
+                            except ValueError:
+                                print(idx_to_str_mapping(command.numpy(), i2w_source))
+                                print(decoded_phrase)
+                                print(start_idx)
+                                print(length_x)
+                                print(actual_phrase)
+                                print(target_length)
+                                print(multiple_components)
+                                raise Exception
+                            decoded_phrase = []
+                            if multiple_components:
+                                start_idx += length_x
+                                length_x += length_x2
+                                
+                        elif i >= target_length:
+                            loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'],dtype=torch.long).unsqueeze(0).to(device))
+                            
                     else:
-                        loss += criterion(decoder_out, action[i].unsqueeze(0))
+                        if i >= target_length:
+                            loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'], dtype=torch.long).unsqueeze(0).to(device))
+                        else:
+                            loss += criterion(decoder_out, action[i].unsqueeze(0))
                     
                     decoder_input = pred.squeeze() # convert list of int into int
                     
                     pred_sent += i2w_target[pred.item()] + " "
                     
-                    if decoder_input.item() == w2i_target['<EOS>']:
-                        break
+                    #if decoder_input.item() == w2i_target['<EOS>']:
+                    #    break
             
             # strip off any leading or trailing white spaces
             pred_sent = pred_sent.strip()
             acc_per_epoch += 1 if pred_sent == true_sent else 0 # exact match accuracy
-        
+            
+            if isinstance(loss, int): 
+                print(true_sent)
+                print(command)
+                print(action)
+                print(x)
+                print(idx_to_str_mapping(command.numpy(), i2w_source))
+                print(multiple_components)
+                print(length_x)
+                print(length_x2)
+                print(use_teacher_forcing)
+                print(max_target_length)
+                print(pred_sent)
             loss.backward()
             
             ### Inspect translation behaviour ###
@@ -154,9 +219,7 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
         
         train_losses.append(loss_per_epoch)
         train_accs.append(acc_per_epoch)
-        
-        teacher_forcing_ratio -= step_per_epoch # decrease teacher forcing ratio
-        
+                
     return train_losses, train_accs, encoder, decoder
 
 
@@ -234,8 +297,29 @@ def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, de
     return test_acc
 
 
-## Sampling function for experiment 1b ##
+# command-component to corresponding action-component semantic mapping function
+def phrase2phrase_mapping(command:torch.Tensor, i2w_source:dict):
+    conjunctions = ['and', 'after']
+    command = command.cpu().numpy().tolist()
+    command_str = idx_to_str_mapping(command, i2w_source)
+    multiple_components = False
+    for conj in conjunctions:
+        if re.search(conj, ' '.join(command_str)):
+            multiple_components = True
+            conj_idx = command_str.index(conj)
+            if conj == 'after':
+                x = semantic_mapping(command_str[conj_idx + 1:])
+            else:
+                x = semantic_mapping(command_str[:conj_idx])
+    if not multiple_components:
+        x = semantic_mapping(command_str)   
+    return x, multiple_components
 
+# mapping of index sequences (in a batch) to corresponding string sequences
+def idx_to_str_mapping(idx_seq:list, i2w_dict:dict, special_tokens:list=[0, 1, 2]):
+    return [i2w_dict[idx] for idx in idx_seq if idx not in special_tokens]
+
+# sampling function for experiment 1b
 def sample_distinct_pairs(cmd_act_pairs:list, ratio:float):
     # randomly shuffle the data set prior to picking distinct examples
     np.random.shuffle(cmd_act_pairs)
