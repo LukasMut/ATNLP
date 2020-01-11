@@ -28,10 +28,13 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
           learning_rate:float=1e-3, detailed_analysis:bool=True, phrase_based_loss:bool=False):
     
     # number of training presentations (most training examples are shown multiple times during training, some more often than others)
-    n_iters = 20000 #100000
+    n_iters = 10000 #100000
     
     # each plot_iters display behaviour of RNN Decoder
-    plot_iters = 10000
+    plot_iters = 1000 #10000
+    
+    # gradient clipping
+    clip = 10.0
     
     train_losses, train_accs = [], []
     encoder_optimizer = Adam(encoder.parameters(), lr=learning_rate)
@@ -100,67 +103,52 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                     decoder_input = action[i] # convert list of int into int
                     
                     if phrase_based_loss:
-                        # compute phrase-based loss
-                        decoded_phrase.append(decoder_out.squeeze(0).detach().numpy())
-                        if i == length_x and i < target_length:
-                            decoded_phrase = torch.tensor(np.array(decoded_phrase), requires_grad=True, dtype=torch.double)
+                        # compute negative log-likelihood loss per individual phrase
+                        decoded_phrase.append(decoder_out.squeeze(0))
+                        if i == length_x and i < (target_length - 1):
+                            decoded_phrase = torch.stack(tuple(out for out in decoded_phrase))
                             actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
-                            try:
-                                loss += criterion(decoded_phrase, actual_phrase)
-                            except ValueError:
-                                print(decoded_phrase)
-                                print(start_idx)
-                                print(length_x)
-                                print(actual_phrase)
-                                raise Exception
+                            loss += criterion(decoded_phrase, actual_phrase)
                             decoded_phrase = []
                             if multiple_components:
                                 start_idx += length_x
                                 length_x += length_x2
                                 
-                        elif i >= target_length:
+                        elif i >= (target_length - 1):
                             loss += criterion(decoder_out, action[-1].unsqueeze(0))
                     else:
-                        # compute standard negative log-likelihood loss
+                        # compute standard negative log-likelihood loss per timestep
                         loss += criterion(decoder_out, action[i].unsqueeze(0))
                     
                     pred_sent += i2w_target[pred.item()] + " "
                     
-                    #if pred.squeeze().item() == w2i_target['<EOS>']:
-                    #    break
+                    if i >= (target_length - 1) and pred.squeeze().item() == w2i_target['<EOS>']:
+                        break
             else:
-                # Autoregressive RNN: feed previous prediction as the next input
+                # Autoregressive RNN: feed previous prediction (y^t-1) as the next input
                 for i in range(1, max_target_length):
                     decoder_out, decoder_hidden = decoder(decoder_input, decoder_hidden)
                     dim = 1 if len(decoder_out.shape) > 1 else 0 # crucial to correctly compute the argmax
                     pred = torch.argmax(decoder_out, dim) # argmax computation
                                         
                     if phrase_based_loss:
-                        decoded_phrase.append(decoder_out.squeeze(0).detach().numpy())
-                        if i == length_x and i < target_length:
-                            decoded_phrase = torch.tensor(np.array(decoded_phrase), requires_grad=True, dtype=torch.double)
+                        # compute negative log-likelihood loss per individual phrase
+                        decoded_phrase.append(decoder_out.squeeze(0))
+                        if i == length_x and i < (target_length - 1):
+                            decoded_phrase = torch.stack(tuple(out for out in decoded_phrase))
                             actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
-                            try:
-                                loss += criterion(decoded_phrase, actual_phrase)
-                            except ValueError:
-                                print(idx_to_str_mapping(command.numpy(), i2w_source))
-                                print(decoded_phrase)
-                                print(start_idx)
-                                print(length_x)
-                                print(actual_phrase)
-                                print(target_length)
-                                print(multiple_components)
-                                raise Exception
+                            loss += criterion(decoded_phrase, actual_phrase)
                             decoded_phrase = []
                             if multiple_components:
                                 start_idx += length_x
                                 length_x += length_x2
                                 
-                        elif i >= target_length:
+                        elif i >= (target_length - 1):
                             loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'],dtype=torch.long).unsqueeze(0).to(device))
                             
                     else:
-                        if i >= target_length:
+                        # compute standard negative log-likelihood loss per timestep
+                        if i >= (target_length - 1):
                             loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'], dtype=torch.long).unsqueeze(0).to(device))
                         else:
                             loss += criterion(decoder_out, action[i].unsqueeze(0))
@@ -169,25 +157,12 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                     
                     pred_sent += i2w_target[pred.item()] + " "
                     
-                    #if decoder_input.item() == w2i_target['<EOS>']:
-                    #    break
+                    if i >= (target_length - 1) and decoder_input.item() == w2i_target['<EOS>']:
+                        break
             
-            # strip off any leading or trailing white spaces
-            pred_sent = pred_sent.strip()
+            pred_sent = pred_sent.strip() # strip off any leading or trailing white spaces
             acc_per_epoch += 1 if pred_sent == true_sent else 0 # exact match accuracy
             
-            if isinstance(loss, int): 
-                print(true_sent)
-                print(command)
-                print(action)
-                print(x)
-                print(idx_to_str_mapping(command.numpy(), i2w_source))
-                print(multiple_components)
-                print(length_x)
-                print(length_x2)
-                print(use_teacher_forcing)
-                print(max_target_length)
-                print(pred_sent)
             loss.backward()
             
             ### Inspect translation behaviour ###
@@ -204,7 +179,11 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                     print("True sent length: {}".format(len(true_sent.split())))
                     print("Pred sent length: {}".format(len(pred_sent.split())))
                     print()
-                
+            
+            # clip gradients after each iteration / presentation (inplace)
+            _ = nn.utils.clip_grad_norm_(encoder.parameters(), clip)
+            _ = nn.utils.clip_grad_norm_(decoder.parameters(), clip)
+            
             encoder_optimizer.step()
             decoder_optimizer.step()
 
@@ -296,6 +275,8 @@ def test(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, de
     print("Test acc: {}".format(test_acc)) # exact-match test accuracy
     return test_acc
 
+
+### helper functions (e.g., to compute phrase-based loss) ###
 
 # command-component to corresponding action-component semantic mapping function
 def phrase2phrase_mapping(command:torch.Tensor, i2w_source:dict):
