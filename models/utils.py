@@ -108,12 +108,13 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                         if i == length_x and i < (target_length - 1):
                             decoded_phrase = torch.stack(tuple(out for out in decoded_phrase))
                             actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
-                            loss += criterion(decoded_phrase, actual_phrase) # take the sqrt of NLLLoss per phrase (not per token)
+                            # add some constant (to avoid NaN values) and take the sqrt of NLLLoss per phrase (not per token)
+                            loss += torch.add(criterion(decoded_phrase, actual_phrase), 1e-5).pow(0.5) 
                             decoded_phrase = []
                             if multiple_components:
                                 start_idx += length_x
                                 length_x += length_x2
-                            loss.backward(retain_graph=True)
+                            #loss.backward(retain_graph=True)
                                 
                         elif i >= (target_length - 1):
                             loss += criterion(decoder_out, action[-1].unsqueeze(0))
@@ -138,12 +139,13 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
                         if i == length_x and i < (target_length - 1):
                             decoded_phrase = torch.stack(tuple(out for out in decoded_phrase))
                             actual_phrase = torch.tensor(np.array([action[i].unsqueeze(0) for i in range(start_idx, length_x + 1)]))
-                            loss += criterion(decoded_phrase, actual_phrase) # take the sqrt of NLLLoss per phrase (not per token)
+                            # add some constant (to avoid NaN values) and take the sqrt of NLLLoss per phrase (not per token)
+                            loss += torch.add(criterion(decoded_phrase, actual_phrase), 1e-5).pow(0.5) 
                             decoded_phrase = []
                             if multiple_components:
                                 start_idx += length_x
                                 length_x += length_x2
-                            loss.backward(retain_graph=True)
+                            #loss.backward(retain_graph=True)
                                 
                         elif i >= (target_length - 1):
                             loss += criterion(decoder_out, torch.tensor(w2i_target['<EOS>'],dtype=torch.long).unsqueeze(0).to(device))
@@ -165,10 +167,10 @@ def train(lang_pairs, w2i_source, w2i_target, i2w_source, i2w_target, encoder, d
             pred_sent = pred_sent.strip() # strip off any leading or trailing white spaces
             acc_per_epoch += 1 if pred_sent == true_sent else 0 # exact match accuracy
             
-            if phrase_based_loss:
-                loss.backward(retain_graph=True)
-            else:
-                loss.backward()
+            #if phrase_based_loss:
+            #    loss.backward(retain_graph=True)
+            #else:
+            loss.backward()
             
             ### Inspect translation behaviour ###
             if detailed_analysis:
