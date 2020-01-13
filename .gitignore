@@ -35,3 +35,4 @@ results/experiment_1a_RNN_commands_results.json
 results/experiment_1b.json
 results/experiment_1b_mini_batch.json
 plotting.ipynb
+individual presentation/Semi-Supervised Sequence Modeling with Cross-View Training.pdf
