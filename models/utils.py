@@ -1,6 +1,8 @@
-__all__ = ['train', 'test', 'cosine_similarity', 'compute_similarities', 'sample_distinct_pairs']
+__all__ = ['train', 'test', 'get_encoder_hiddens', 'get_nearest_neighbours', 'sort_results',
+           'cosine_similarity', 'compute_similarities', 'sample_distinct_pairs']
 
 import numpy as np
+import pandas as pd
 import torch.nn as nn
 import random
 import re 
@@ -239,7 +241,7 @@ def train(train_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, dec
         return train_losses, train_accs, command_hiddens, encoder, decoder
     else:
         return train_losses, train_accs, encoder, decoder
-
+    
 
 ### Testing ###
 
@@ -380,21 +382,69 @@ def test(test_dl, w2i_source, w2i_target, i2w_source, i2w_target, encoder, decod
 
 ### Helper functions for training and testing ###
 
+# store final encoder hidden states of training and representative commands respectively (after training)
+def get_encoder_hiddens(train_dl, encoder, i2w_source:dict, batch_size:int):
+    command_hiddens = {}
+    encoder.eval()
+    with torch.no_grad():
+        for idx, (commands, input_lengths, actions) in enumerate(train_dl):
+            # if current batch_size is smaller than specified batch_size, skip batch
+            if len(commands) != batch_size:
+                n_lang_pairs_not_tested = len(commands)
+                continue
+            commands, input_lengths, _ = sort_batch(commands, input_lengths, actions, training=False)
+            encoder_hidden = encoder.init_hidden(batch_size)
+            _, encoder_hidden = encoder(commands, input_lengths, encoder_hidden)
+            if encoder.bidir:
+                if hasattr(encoder, 'lstm'):
+                    encoder_hidden_final = sum_directions(encoder_hidden, lstm=True)
+                else:
+                    encoder_hidden_final = sum_directions(encoder_hidden)
+            else:
+                encoder_hidden_final = encoder_hidden
+            commands = commands.cpu().numpy()
+            commands_str = idx_to_str_mapping(commands, i2w_source)
+            command_h = encoder_hidden_final.squeeze(0) if encoder_hidden_final.size(0) == 1 else encoder_hidden_final[0].squeeze(0)
+            for i, cmd in enumerate(commands_str):
+                # per command, store final encoder hidden states
+                command_hiddens[' '.join(cmd)] = command_h[i]
+    return command_hiddens
+
+# create pd.DataFrames for nearest neighbours per representative command
+def get_nearest_neighbours(train_command_hiddens:dict, rep_command_hiddens:dict):
+    nearest_neighbours_per_cmd = []
+    for rep_command, rep_command_hidden in rep_command_hiddens.items():
+        nearest_neighbours = compute_similarities(train_command_hiddens, command=rep_command, command_h=rep_command_hidden)
+        nearest_neighbours_df = pd.DataFrame.from_dict(nearest_neighbours, orient='index', columns=[rep_command])
+        nearest_neighbours_per_cmd.append(nearest_neighbours_df)
+    return nearest_neighbours_per_cmd
+
+# sort dictionary according to its values
 def sort_results(results:dict, stop:int=None): return dict(sorted(results.items(), key=lambda kv:kv[1], reverse=True)[:stop])
 
-# compute cosine similarities between hidden states of commands
-def compute_similarities(command_hiddens:dict, command:str, n_neighbours:int=5):
-    command_h = command_hiddens[command]
-    del command_hiddens[command]
+# compute cosine similarities between final hidden states of train commands and representative commands
+def compute_similarities(train_command_hiddens:dict, command:str, command_h:torch.Tensor=None, train:bool=False, n_neighbours:int=5):
+    if train:
+        command_h = train_command_hiddens[command]
+        del train_command_hiddens[command]
+    else:
+        assert isinstance(command_h, torch.Tensor), 'hidden state for representative command is missing'
+        try:
+            del train_command_hiddens[command]
+        except KeyError:
+            pass
     neighbours = {}
-    for cmd, h in command_hiddens.items():
-        neighbours[cmd] = cosine_similarity(command_h, h)
+    for train_cmd, h in train_command_hiddens.items():
+        neighbours[train_cmd] = cosine_similarity(command_h, h)
     nearest_neighbours = sort_results(neighbours, n_neighbours)
     return nearest_neighbours
 
-# cosine similarity
+# cosine similarity computation
 def cosine_similarity(x:torch.Tensor, y:torch.Tensor):
-    x, y = x.detach().cpu().numpy(), y.detach().cpu().numpy()
+    try:
+        x, y = x.cpu().numpy(), y.cpu().numpy()
+    except:
+        x, y = x.detach().cpu().numpy(), y.detach().cpu().numpy()
     num = x @ y
     denom = np.linalg.norm(x) * np.linalg.norm(y) # default is Frobenius norm (i.e., L2 norm)
     return num / denom

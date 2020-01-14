@@ -1,4 +1,4 @@
-__all__ = ['load_dataset', 'sort_dict', 'w2i', 'create_pairs', 'max_length', 's2i', 'pairs2idx', 'create_batches']
+__all__ = ['semantic_mapping', 'load_dataset', 'sort_dict', 'w2i', 'create_pairs', 'max_length', 's2i', 'pairs2idx', 'create_batches']
 
 import numpy as np
 import os
